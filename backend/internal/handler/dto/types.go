@@ -520,6 +520,11 @@ type AdminUsageLog struct {
 
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`
+
+	// Audit fields let /admin/usage act as a gateway troubleshooting entrypoint.
+	AuditAvailable bool    `json:"audit_available"`
+	AuditID        *string `json:"audit_id,omitempty"`
+	AuditStatus    string  `json:"audit_status,omitempty"`
 }
 
 type UsageCleanupFilters struct {

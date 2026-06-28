@@ -107,6 +107,9 @@
         <button class="tab" :class="{ 'tab-active': activeTab === 'errors' }" @click="switchToErrorsTab">
           {{ t('usage.tabs.errors') }}
         </button>
+        <button class="tab" :class="{ 'tab-active': activeTab === 'audit' }" @click="switchToAuditTab">
+          审计
+        </button>
       </div>
       <div v-show="activeTab === 'usage'">
         <UsageTable
@@ -118,6 +121,7 @@
           :default-sort-order="'desc'"
           @sort="handleSort"
           @userClick="handleUserClick"
+          @auditOpen="openAuditDetail"
         />
         <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
       </div>
@@ -129,6 +133,114 @@
           @update:page="onErrPage"
           @update:pageSize="onErrPageSize" />
         <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
+      </div>
+      <div v-show="activeTab === 'audit'" class="space-y-4">
+        <div class="card p-4">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <input v-model="auditFilters.request_id" class="input" placeholder="request_id" @keyup.enter="reloadAuditRows" />
+            <input v-model="auditFilters.client_request_id" class="input" placeholder="client_request_id" @keyup.enter="reloadAuditRows" />
+            <input v-model.number="auditFilters.status_code" class="input" type="number" min="100" max="599" placeholder="status_code" @keyup.enter="reloadAuditRows" />
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="auditFilters.only_errors" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              only errors
+            </label>
+          </div>
+          <div class="mt-3 flex justify-end gap-2">
+            <button class="btn btn-secondary" @click="resetAuditFilters">重置</button>
+            <button class="btn btn-secondary" :disabled="auditExporting" @click="exportAuditRows">
+              {{ auditExporting ? '导出中...' : '导出 JSONL' }}
+            </button>
+            <button class="btn btn-primary" @click="reloadAuditRows">查询</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-5">
+          <div class="card p-4">
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">审计记录</div>
+            <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ auditStats?.total?.toLocaleString() || 0 }}</div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">错误率</div>
+            <div class="mt-2 text-2xl font-semibold" :class="(auditStats?.error_rate || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'">{{ formatPercent(auditStats?.error_rate || 0) }}</div>
+            <div class="mt-1 text-xs text-gray-500">{{ auditStats?.errors || 0 }} errors</div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">平均耗时</div>
+            <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatMs(auditStats?.avg_duration_ms || 0) }}</div>
+            <div class="mt-1 text-xs text-gray-500">max {{ formatMs(auditStats?.max_duration_ms || 0) }}</div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">截断</div>
+            <div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ (auditStats?.input_truncated || 0) + (auditStats?.output_truncated || 0) }}</div>
+            <div class="mt-1 text-xs text-gray-500">input {{ auditStats?.input_truncated || 0 }} / output {{ auditStats?.output_truncated || 0 }}</div>
+          </div>
+          <div class="card p-4">
+            <div class="text-xs font-medium text-gray-500 dark:text-gray-400">审计健康</div>
+            <div class="mt-2 text-sm font-semibold" :class="auditJsonlMissing ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'">
+              {{ auditJsonlMissing ? 'JSONL 不可读' : '索引正常' }}
+            </div>
+            <div class="mt-1 truncate text-xs text-gray-500" :title="auditHealth?.last_jsonl_file_path || ''">
+              24h {{ auditHealth?.recent_24h || 0 }} / errors {{ auditHealth?.errors_24h || 0 }}
+            </div>
+          </div>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="overflow-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
+              <thead class="bg-gray-50 dark:bg-dark-800">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">时间</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Request</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">用户/API Key</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">模型</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">状态</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">大小</th>
+                  <th class="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400"></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-800 dark:bg-dark-900">
+                <tr v-if="auditLoading">
+                  <td colspan="7" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">加载中...</td>
+                </tr>
+                <tr v-else-if="auditRows.length === 0">
+                  <td colspan="7" class="px-4 py-10 text-center text-gray-500 dark:text-gray-400">暂无审计记录</td>
+                </tr>
+                <template v-else>
+                  <tr v-for="row in auditRows" :key="row.audit_id" class="hover:bg-gray-50 dark:hover:bg-dark-800">
+                    <td class="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">{{ formatDateTime(row.created_at) }}</td>
+                    <td class="max-w-[260px] px-4 py-3">
+                      <div class="truncate font-mono text-xs text-gray-900 dark:text-white" :title="row.request_id">{{ row.request_id || '-' }}</div>
+                      <div class="truncate font-mono text-[11px] text-gray-500" :title="row.client_request_id">{{ row.client_request_id || '-' }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <div>U {{ row.user_id || '-' }}</div>
+                      <div class="text-xs text-gray-500">K {{ row.api_key_id || '-' }}</div>
+                    </td>
+                    <td class="max-w-[220px] px-4 py-3">
+                      <div class="truncate text-gray-900 dark:text-white" :title="row.model">{{ row.model || '-' }}</div>
+                      <div class="truncate font-mono text-xs text-gray-500" :title="row.inbound_endpoint">{{ row.inbound_endpoint || row.path || '-' }}</div>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="auditStatusClass(row.status_code)">
+                        {{ row.status_code || '-' }}
+                      </span>
+                      <div v-if="row.error_type" class="mt-1 text-xs text-rose-500">{{ row.error_type }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-400">
+                      <div>In {{ formatBytes(row.input_size) }}<span v-if="row.input_truncated"> *</span></div>
+                      <div>Out {{ formatBytes(row.output_size) }}<span v-if="row.output_truncated"> *</span></div>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      <button class="btn btn-ghost px-2 py-1" title="查看审计" @click="openAuditDetail(row.audit_id)">
+                        <Icon name="eye" size="sm" class="text-primary-500" />
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <Pagination v-if="auditPagination.total > 0" :page="auditPagination.page" :total="auditPagination.total" :page-size="auditPagination.page_size" @update:page="handleAuditPageChange" @update:pageSize="handleAuditPageSizeChange" />
+        </div>
       </div>
     </div>
   </AppLayout>
@@ -147,6 +259,7 @@
     :hide-actions="true"
     @close="showBalanceHistoryModal = false; balanceHistoryUser = null"
   />
+  <AuditDetailDrawer v-model:show="showAuditDrawer" :audit-id="selectedAuditId" />
 </template>
 
 <script setup lang="ts">
@@ -156,17 +269,19 @@ import { saveAs } from 'file-saver'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admin'; import { adminUsageAPI } from '@/api/admin/usage'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatReasoningEffort } from '@/utils/format'
+import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
+import AuditDetailDrawer from '@/components/admin/audit/AuditDetailDrawer.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
 import { listErrorLogs } from '@/api/admin/ops'
 import type { OpsErrorLog } from '@/api/admin/ops'
+import { adminAuditAPI, type GatewayAuditHealth, type GatewayAuditIndex, type GatewayAuditQueryParams, type GatewayAuditStats } from '@/api/admin/audit'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -203,6 +318,8 @@ const cleanupDialogVisible = ref(false)
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
+const showAuditDrawer = ref(false)
+const selectedAuditId = ref<string | null>(null)
 
 const breakdownFilters = computed(() => {
   const f: Record<string, any> = {}
@@ -227,6 +344,11 @@ const handleUserClick = async (userId: number) => {
   } catch {
     appStore.showError(t('admin.usage.failedToLoadUser'))
   }
+}
+
+const openAuditDetail = (auditId: string) => {
+  selectedAuditId.value = auditId
+  showAuditDrawer.value = true
 }
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
@@ -458,6 +580,8 @@ const applyFilters = () => {
   errPage.value = 1
   if (activeTab.value === 'errors') {
     loadAdminErrors()
+  } else if (activeTab.value === 'audit') {
+    reloadAuditRows()
   } else {
     errRows.value = []
   }
@@ -469,6 +593,10 @@ const refreshData = () => {
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
   if (activeTab.value === 'errors') loadAdminErrors()
+  if (activeTab.value === 'audit') {
+    loadAuditRows()
+    loadAuditStats()
+  }
 }
 const resetFilters = () => {
   const range = getLast24HoursRangeDates()
@@ -574,7 +702,8 @@ const allColumns = computed(() => [
   { key: 'duration', label: t('usage.duration'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
-  { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false }
+  { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false },
+  { key: 'audit', label: '审计', sortable: false }
 ])
 
 const hiddenColumns = reactive<Set<string>>(new Set())
@@ -623,8 +752,8 @@ const loadSavedColumns = () => {
   }
 }
 
-// Error tab state
-const activeTab = ref<'usage' | 'errors'>('usage')
+// Error / audit tab state
+const activeTab = ref<'usage' | 'errors' | 'audit'>('usage')
 const errRows = ref<OpsErrorLog[]>([])
 const errLoading = ref(false)
 const errPage = ref(1)
@@ -632,6 +761,23 @@ const errPageSize = ref(20)
 const errTotal = ref(0)
 const showErrorModal = ref(false)
 const selectedErrorId = ref<number | null>(null)
+const auditRows = ref<GatewayAuditIndex[]>([])
+const auditStats = ref<GatewayAuditStats | null>(null)
+const auditHealth = ref<GatewayAuditHealth | null>(null)
+const auditLoading = ref(false)
+const auditExporting = ref(false)
+const auditPagination = reactive({ page: 1, page_size: 20, total: 0 })
+const auditFilters = reactive<{
+  request_id: string
+  client_request_id: string
+  status_code: number | null
+  only_errors: boolean
+}>({
+  request_id: '',
+  client_request_id: '',
+  status_code: null,
+  only_errors: false
+})
 
 // 注意：'YYYY-MM-DDT00:00:00' 无时区后缀，按本地时区解析后再转 UTC——与页面其它日期处理语义一致，刻意如此，勿改成 'T00:00:00Z'
 const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
@@ -662,10 +808,113 @@ const loadAdminErrors = async () => {
   }
 }
 
+const buildAuditQueryParams = (page = auditPagination.page, pageSize = auditPagination.page_size): GatewayAuditQueryParams => {
+  const statusCode = Number(auditFilters.status_code)
+  return {
+    page,
+    page_size: pageSize,
+    start_date: filters.value.start_date,
+    end_date: filters.value.end_date,
+    user_id: filters.value.user_id ?? undefined,
+    api_key_id: filters.value.api_key_id ?? undefined,
+    account_id: filters.value.account_id ?? undefined,
+    group_id: filters.value.group_id ?? undefined,
+    model: filters.value.model || undefined,
+    request_id: auditFilters.request_id.trim() || undefined,
+    client_request_id: auditFilters.client_request_id.trim() || undefined,
+    status_code: Number.isFinite(statusCode) && statusCode > 0 ? statusCode : undefined,
+    only_errors: auditFilters.only_errors || undefined,
+  }
+}
+
+const loadAuditRows = async () => {
+  auditLoading.value = true
+  try {
+    const resp = await adminAuditAPI.list(buildAuditQueryParams())
+    auditRows.value = resp.items
+    auditPagination.total = resp.total
+  } catch (error) {
+    console.error('Failed to load audit rows:', error)
+    appStore.showError('审计记录加载失败')
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+const loadAuditStats = async () => {
+  try {
+    auditStats.value = await adminAuditAPI.stats(buildAuditQueryParams(1, 1))
+    auditHealth.value = await adminAuditAPI.health()
+  } catch (error) {
+    console.error('Failed to load audit stats:', error)
+    auditStats.value = null
+  }
+}
+
+const reloadAuditRows = () => {
+  auditPagination.page = 1
+  loadAuditRows()
+  loadAuditStats()
+}
+
+const resetAuditFilters = () => {
+  auditFilters.request_id = ''
+  auditFilters.client_request_id = ''
+  auditFilters.status_code = null
+  auditFilters.only_errors = false
+  reloadAuditRows()
+}
+
+const exportAuditRows = async () => {
+  auditExporting.value = true
+  try {
+    const blob = await adminAuditAPI.export(buildAuditQueryParams(1, 200))
+    saveAs(blob, `gateway_audit_${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`)
+  } catch (error) {
+    console.error('Failed to export audit rows:', error)
+    appStore.showError('审计导出失败')
+  } finally {
+    auditExporting.value = false
+  }
+}
+
 const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
 const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
 const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
 const switchToErrorsTab = () => { activeTab.value = 'errors'; if (errRows.value.length === 0) loadAdminErrors() }
+const handleAuditPageChange = (p: number) => { auditPagination.page = p; loadAuditRows() }
+const handleAuditPageSizeChange = (s: number) => { auditPagination.page_size = s; auditPagination.page = 1; loadAuditRows() }
+const switchToAuditTab = () => {
+  activeTab.value = 'audit'
+  if (auditRows.value.length === 0) loadAuditRows()
+  loadAuditStats()
+}
+
+const auditStatusClass = (status?: number) => {
+  if (!status) return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
+  if (status >= 500) return 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'
+  if (status >= 400) return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+}
+
+const auditJsonlMissing = computed(() =>
+  Boolean(auditHealth.value?.last_jsonl_file_path && auditHealth.value.last_jsonl_file_exists === false)
+)
+
+const formatBytes = (value: number) => {
+  if (!value) return '0 B'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
+const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`
+
+const formatMs = (value: number) => {
+  if (!value) return '-'
+  if (value < 1000) return `${Math.round(value)}ms`
+  return `${(value / 1000).toFixed(2)}s`
+}
 
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)

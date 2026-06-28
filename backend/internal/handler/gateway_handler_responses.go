@@ -84,6 +84,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	captureGatewayInput(c, "openai", "responses", reqModel, reqStream, body)
 	requestCtx := c.Request.Context()
 	if service.IsImageGenerationIntent("/v1/responses", reqModel, body) {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
@@ -187,7 +188,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		account := selection.Account
-		setOpsSelectedAccount(c, account.ID, account.Platform)
+		setSelectedAccountContexts(c, account)
 
 		// 4. Acquire account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc
@@ -219,13 +220,20 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		forwardStart := time.Now()
 		result, err := h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
+		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
 
 		if err != nil {
+			attemptStatus := c.Writer.Status()
+			if attemptStatus < http.StatusBadRequest {
+				attemptStatus = 0
+			}
+			markGatewayAuditAttemptResult(c, attemptStatus, forwardDurationMs, err)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
@@ -257,6 +265,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			)
 			return
 		}
+		markGatewayAuditAttemptResult(c, c.Writer.Status(), forwardDurationMs, nil)
 
 		// 6. Record usage
 		userAgent := c.GetHeader("User-Agent")
