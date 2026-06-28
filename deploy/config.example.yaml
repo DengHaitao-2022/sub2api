@@ -251,7 +251,9 @@ gateway:
     input_capture_mode: preview
     output_capture_mode: preview
     file_enabled: true
-    file_path: /var/log/sub2api/audit.jsonl
+    # Docker deployments should mount ./data:/app/data so audit shards survive container restarts.
+    # Docker 部署建议挂载 ./data:/app/data，确保审计分片在容器重启后仍保留。
+    file_path: /app/data/audit/audit.jsonl
     # Write a lightweight metadata index to Ops System Log; full bodies stay in JSONL only.
     # 向 Ops System Log 写入轻量元数据索引；完整 input/output 仅保存在 JSONL。
     ops_index_enabled: true

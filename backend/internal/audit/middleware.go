@@ -39,8 +39,12 @@ func GatewayAuditMiddleware(cfg config.GatewayAuditConfig, enabledCheck ...Gatew
 		auditCtx := newContext(cfg, started)
 		Attach(c, auditCtx)
 
-		writer := NewResponseWriter(c.Writer, outputCaptureBytes(cfg))
+		previousWriter := c.Writer
+		writer := NewResponseWriter(previousWriter, outputCaptureBytes(cfg))
 		c.Writer = writer
+		defer func() {
+			c.Writer = previousWriter
+		}()
 
 		c.Next()
 
