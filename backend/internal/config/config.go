@@ -1930,7 +1930,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.audit.input_capture_mode", "preview")
 	viper.SetDefault("gateway.audit.output_capture_mode", "preview")
 	viper.SetDefault("gateway.audit.file_enabled", true)
-	viper.SetDefault("gateway.audit.file_path", "/var/log/sub2api/audit.jsonl")
+	viper.SetDefault("gateway.audit.file_path", "/app/data/audit/audit.jsonl")
 	viper.SetDefault("gateway.audit.ops_index_enabled", true)
 	viper.SetDefault("gateway.audit.max_input_body_bytes", int64(64*1024))
 	viper.SetDefault("gateway.audit.max_output_body_bytes", int64(128*1024))
