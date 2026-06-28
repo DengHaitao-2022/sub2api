@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
@@ -57,7 +58,7 @@ func TestGatewayAuditMiddlewareWritesJSONL(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(jsonlShardPath(path, time.Now()))
 	if err != nil {
 		t.Fatalf("read audit jsonl: %v", err)
 	}
@@ -84,6 +85,98 @@ func TestGatewayAuditMiddlewareWritesJSONL(t *testing.T) {
 	output := event.Output.Body.(map[string]any)
 	if got := output["api_key"]; got != "***" {
 		t.Fatalf("output api_key not redacted: %#v", got)
+	}
+}
+
+func TestGatewayAuditMiddlewareIncludesAntigravityPaths(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	cfg := config.GatewayAuditConfig{
+		Enabled:             true,
+		InputCaptureMode:    "preview",
+		OutputCaptureMode:   "preview",
+		FileEnabled:         true,
+		FilePath:            path,
+		MaxInputBodyBytes:   1024,
+		MaxOutputBodyBytes:  1024,
+		MaxStringValueBytes: 1024,
+		MaxArrayItems:       10,
+		MaxObjectDepth:      8,
+		SampleRate:          1,
+		IncludePaths: []string{
+			"/antigravity/v1/messages",
+			"/antigravity/v1/messages/count_tokens",
+			"/antigravity/v1beta/models",
+			"/v1beta/models",
+		},
+	}
+
+	r := gin.New()
+	r.Use(GatewayAuditMiddleware(cfg))
+	r.POST("/antigravity/v1/messages", func(c *gin.Context) {
+		CaptureInput(c, InputSnapshot{Model: "ag-test", Body: []byte(`{"model":"ag-test"}`)})
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/antigravity/v1/messages", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	raw, err := os.ReadFile(jsonlShardPath(path, time.Now()))
+	if err != nil {
+		t.Fatalf("read audit jsonl: %v", err)
+	}
+	var event Event
+	if err := json.Unmarshal(raw, &event); err != nil {
+		t.Fatalf("unmarshal audit event: %v raw=%s", err, string(raw))
+	}
+	if event.Path != "/antigravity/v1/messages" || event.Model != "ag-test" {
+		t.Fatalf("antigravity audit not captured: %#v", event)
+	}
+}
+
+func TestGatewayAuditMiddlewareTimeToFirstTokenFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	cfg := config.GatewayAuditConfig{
+		Enabled:             true,
+		InputCaptureMode:    "preview",
+		OutputCaptureMode:   "preview",
+		FileEnabled:         true,
+		FilePath:            path,
+		MaxOutputBodyBytes:  1024,
+		MaxStringValueBytes: 1024,
+		MaxArrayItems:       10,
+		MaxObjectDepth:      8,
+		SampleRate:          1,
+		IncludePaths:        []string{"/v1/ttft"},
+	}
+
+	r := gin.New()
+	r.Use(GatewayAuditMiddleware(cfg))
+	r.GET("/v1/ttft", func(c *gin.Context) {
+		time.Sleep(2 * time.Millisecond)
+		_, _ = c.Writer.Write([]byte("hello"))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/ttft", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	raw, err := os.ReadFile(jsonlShardPath(path, time.Now()))
+	if err != nil {
+		t.Fatalf("read audit jsonl: %v", err)
+	}
+	var event Event
+	if err := json.Unmarshal(raw, &event); err != nil {
+		t.Fatalf("unmarshal audit event: %v raw=%s", err, string(raw))
+	}
+	if event.TimeToFirstTokenMs <= 0 {
+		t.Fatalf("expected TTFT fallback, got %d", event.TimeToFirstTokenMs)
 	}
 }
 

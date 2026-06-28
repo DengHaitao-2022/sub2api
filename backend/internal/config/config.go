@@ -1940,9 +1940,13 @@ func setDefaults() {
 	viper.SetDefault("gateway.audit.sample_rate", 1.0)
 	viper.SetDefault("gateway.audit.include_paths", []string{
 		"/v1/messages",
+		"/v1beta/models",
 		"/v1/responses",
 		"/responses",
 		"/backend-api/codex/responses",
+		"/antigravity/v1/messages",
+		"/antigravity/v1/messages/count_tokens",
+		"/antigravity/v1beta/models",
 		"/v1/chat/completions",
 		"/chat/completions",
 		"/v1/embeddings",

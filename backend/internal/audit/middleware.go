@@ -175,6 +175,11 @@ func buildFinalEvent(c *gin.Context, auditCtx *Context, writer *ResponseWriter, 
 	event.Output = buildOutputRecord(writer, c.Writer.Header().Get("Content-Type"), auditCtx.cfg)
 	event.Usage = parseUsage(writer.PreviewBytes())
 	event.TimeToFirstTokenMs = contextInt64(c, opsTimeToFirstTokenMsKey)
+	if event.TimeToFirstTokenMs <= 0 {
+		if firstWriteAt := writer.FirstWriteAt(); !firstWriteAt.IsZero() && !firstWriteAt.Before(auditCtx.started) {
+			event.TimeToFirstTokenMs = firstWriteAt.Sub(auditCtx.started).Milliseconds()
+		}
+	}
 	fillErrorFields(event)
 	return event
 }

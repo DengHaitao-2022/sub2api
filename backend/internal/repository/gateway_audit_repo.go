@@ -38,9 +38,11 @@ INSERT INTO gateway_audit_index (
   audit_id, request_id, client_request_id, user_id, api_key_id, account_id, group_id,
   platform, model, inbound_endpoint, upstream_endpoint, method, path, status_code, error_type,
   input_hash, output_hash, input_size, output_size, input_truncated, output_truncated,
-  duration_ms, time_to_first_token_ms, capture_mode, sampled, file_path, file_offset, line_bytes, created_at
+  duration_ms, time_to_first_token_ms, attempt_count, has_failover,
+  first_upstream_status_code, final_upstream_status_code,
+  capture_mode, sampled, file_path, file_offset, line_bytes, created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
 ) ON CONFLICT (audit_id) DO UPDATE SET
   request_id = EXCLUDED.request_id,
   client_request_id = EXCLUDED.client_request_id,
@@ -64,6 +66,10 @@ INSERT INTO gateway_audit_index (
   output_truncated = EXCLUDED.output_truncated,
   duration_ms = EXCLUDED.duration_ms,
   time_to_first_token_ms = EXCLUDED.time_to_first_token_ms,
+  attempt_count = EXCLUDED.attempt_count,
+  has_failover = EXCLUDED.has_failover,
+  first_upstream_status_code = EXCLUDED.first_upstream_status_code,
+  final_upstream_status_code = EXCLUDED.final_upstream_status_code,
   capture_mode = EXCLUDED.capture_mode,
   sampled = EXCLUDED.sampled,
   file_path = EXCLUDED.file_path,
@@ -93,6 +99,10 @@ INSERT INTO gateway_audit_index (
 		record.OutputTruncated,
 		record.DurationMs,
 		record.TimeToFirstTokenMs,
+		record.AttemptCount,
+		record.HasFailover,
+		auditNullInt(record.FirstUpstreamStatusCode),
+		auditNullInt(record.FinalUpstreamStatusCode),
 		auditNullString(record.CaptureMode),
 		record.Sampled,
 		auditNullString(record.FilePath),
@@ -101,6 +111,36 @@ INSERT INTO gateway_audit_index (
 		createdAt,
 	)
 	return err
+}
+
+func (r *gatewayAuditRepository) CleanupAuditRetention(ctx context.Context, cutoff time.Time) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil gateway audit repository")
+	}
+	if cutoff.IsZero() {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM admin_audit_access_logs
+WHERE created_at < $1
+   OR audit_id IN (
+     SELECT audit_id
+     FROM gateway_audit_index
+     WHERE created_at < $1
+   )`, cutoff); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM gateway_audit_index
+WHERE created_at < $1`, cutoff); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *gatewayAuditRepository) GetGatewayAuditStats(ctx context.Context, filter *service.GatewayAuditFilter) (*service.GatewayAuditStats, error) {
@@ -497,6 +537,10 @@ SELECT
   i.output_truncated,
   COALESCE(i.duration_ms, 0),
   COALESCE(i.time_to_first_token_ms, 0),
+  COALESCE(i.attempt_count, 0),
+  i.has_failover,
+  COALESCE(i.first_upstream_status_code, 0),
+  COALESCE(i.final_upstream_status_code, 0),
   COALESCE(i.capture_mode, ''),
   i.sampled,
   COALESCE(i.file_path, ''),
@@ -549,6 +593,10 @@ func scanGatewayAuditRow(row gatewayAuditScanner) (*service.GatewayAuditIndex, e
 		&item.OutputTruncated,
 		&item.DurationMs,
 		&item.TimeToFirstTokenMs,
+		&item.AttemptCount,
+		&item.HasFailover,
+		&item.FirstUpstreamStatusCode,
+		&item.FinalUpstreamStatusCode,
 		&item.CaptureMode,
 		&item.Sampled,
 		&item.FilePath,

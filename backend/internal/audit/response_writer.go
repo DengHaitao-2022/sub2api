@@ -7,6 +7,7 @@ import (
 	"hash"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,12 +15,13 @@ import (
 type ResponseWriter struct {
 	gin.ResponseWriter
 
-	statusCode int
-	bodySize   int64
-	preview    bytes.Buffer
-	hash       hash.Hash
-	firstWrite bool
-	maxCapture int64
+	statusCode   int
+	bodySize     int64
+	preview      bytes.Buffer
+	hash         hash.Hash
+	firstWrite   bool
+	firstWriteAt time.Time
+	maxCapture   int64
 }
 
 func NewResponseWriter(inner gin.ResponseWriter, maxCaptureBytes int64) *ResponseWriter {
@@ -46,6 +48,7 @@ func (w *ResponseWriter) Write(data []byte) (int, error) {
 	}
 	if !w.firstWrite {
 		w.firstWrite = true
+		w.firstWriteAt = time.Now()
 	}
 	_, _ = w.hash.Write(data)
 	w.bodySize += int64(len(data))
@@ -69,6 +72,13 @@ func (w *ResponseWriter) StatusCode() int {
 		return w.ResponseWriter.Status()
 	}
 	return http.StatusOK
+}
+
+func (w *ResponseWriter) FirstWriteAt() time.Time {
+	if w == nil {
+		return time.Time{}
+	}
+	return w.firstWriteAt
 }
 
 type responseWriterOnly struct {
