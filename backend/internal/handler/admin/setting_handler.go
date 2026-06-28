@@ -251,6 +251,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                   settings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:            settings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                     settings.BackendModeEnabled,
+		GatewayAuditEnabled:                    settings.GatewayAuditEnabled,
 		EnableFingerprintUnification:           settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:              settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                       settings.EnableCCHSigning,
@@ -590,6 +591,7 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
+	GatewayAuditEnabled                    *bool   `json:"gateway_audit_enabled"`
 	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
@@ -1683,6 +1685,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpsMetricsIntervalSeconds
 		}(),
+		GatewayAuditEnabled: func() bool {
+			if req.GatewayAuditEnabled != nil {
+				return *req.GatewayAuditEnabled
+			}
+			return previousSettings.GatewayAuditEnabled
+		}(),
 		EnableFingerprintUnification: func() bool {
 			if req.EnableFingerprintUnification != nil {
 				return *req.EnableFingerprintUnification
@@ -2135,6 +2143,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                   updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:            updatedSettings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                     updatedSettings.BackendModeEnabled,
+		GatewayAuditEnabled:                    updatedSettings.GatewayAuditEnabled,
 		EnableFingerprintUnification:           updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                       updatedSettings.EnableCCHSigning,
@@ -2619,6 +2628,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CustomEndpoints != after.CustomEndpoints {
 		changed = append(changed, "custom_endpoints")
+	}
+	if before.GatewayAuditEnabled != after.GatewayAuditEnabled {
+		changed = append(changed, "gateway_audit_enabled")
 	}
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")

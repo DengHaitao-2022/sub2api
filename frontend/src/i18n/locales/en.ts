@@ -5790,6 +5790,8 @@ export default {
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
+        gatewayAudit: 'Gateway Audit',
+        gatewayAuditHint: 'Capture gateway request audit records. Keep disabled unless you need request/response traceability.',
         fingerprintUnification: 'Fingerprint Unification',
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
         metadataPassthrough: 'Metadata Passthrough',

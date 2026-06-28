@@ -27,7 +27,11 @@ func RegisterGatewayRoutes(
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
-	auditLogger := audit.GatewayAuditMiddleware(cfg.Gateway.Audit)
+	var auditEnabled audit.GatewayAuditEnabledFunc
+	if settingService != nil {
+		auditEnabled = settingService.IsGatewayAuditEnabled
+	}
+	auditLogger := audit.GatewayAuditMiddleware(cfg.Gateway.Audit, auditEnabled)
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)

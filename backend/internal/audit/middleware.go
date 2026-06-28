@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bytes"
+	"context"
 	"hash/fnv"
 	"net/http"
 	"reflect"
@@ -21,10 +22,15 @@ import (
 
 const opsTimeToFirstTokenMsKey = "ops_time_to_first_token_ms"
 
-func GatewayAuditMiddleware(cfg config.GatewayAuditConfig) gin.HandlerFunc {
+type GatewayAuditEnabledFunc func(context.Context) bool
+
+func GatewayAuditMiddleware(cfg config.GatewayAuditConfig, enabledCheck ...GatewayAuditEnabledFunc) gin.HandlerFunc {
 	cfg = normalizeConfig(cfg)
 	return func(c *gin.Context) {
-		if !cfg.Enabled || c == nil || c.Request == nil || !shouldCapture(c, cfg) {
+		if c == nil {
+			return
+		}
+		if c.Request == nil || !gatewayAuditEnabled(c.Request.Context(), cfg, enabledCheck...) || !shouldCapture(c, cfg) {
 			c.Next()
 			return
 		}
@@ -43,6 +49,13 @@ func GatewayAuditMiddleware(cfg config.GatewayAuditConfig) gin.HandlerFunc {
 			logger.FromContext(c.Request.Context()).Warn("gateway.audit.write_failed", zap.Error(err))
 		}
 	}
+}
+
+func gatewayAuditEnabled(ctx context.Context, cfg config.GatewayAuditConfig, checks ...GatewayAuditEnabledFunc) bool {
+	if len(checks) == 0 || checks[0] == nil {
+		return cfg.Enabled
+	}
+	return checks[0](ctx)
 }
 
 func normalizeConfig(cfg config.GatewayAuditConfig) config.GatewayAuditConfig {
