@@ -17,6 +17,11 @@ var ErrGatewayAuditNotFound = infraerrors.NotFound("GATEWAY_AUDIT_NOT_FOUND", "g
 
 type GatewayAuditRepository interface {
 	InsertAuditIndex(ctx context.Context, record *audit.IndexRecord) error
+	BatchInsertAuditIndex(ctx context.Context, records []*audit.IndexRecord) error
+	GetAuditIndexerOffset(ctx context.Context, filePath string) (int64, error)
+	UpsertAuditIndexerOffset(ctx context.Context, filePath string, nextOffset int64, lastIndexedAt time.Time) error
+	CountAuditIndexByFile(ctx context.Context, filePath string) (int64, error)
+	CleanupAuditRetention(ctx context.Context, cutoff time.Time) error
 	ListGatewayAudit(ctx context.Context, filter *GatewayAuditFilter) (*GatewayAuditList, error)
 	GetGatewayAuditIndex(ctx context.Context, auditID string) (*GatewayAuditIndex, error)
 	GetGatewayAuditByRequest(ctx context.Context, requestID string, apiKeyID int64) (*GatewayAuditIndex, error)

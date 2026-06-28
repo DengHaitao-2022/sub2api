@@ -17,7 +17,6 @@ import (
 )
 
 var fileWriteMu sync.Mutex
-var cleanupState sync.Map
 
 type JSONLWriteResult struct {
 	FilePath   string
@@ -61,62 +60,56 @@ type IndexRecord struct {
 	CreatedAt               time.Time
 }
 
-type IndexWriter interface {
-	InsertAuditIndex(ctx context.Context, record *IndexRecord) error
-}
-
 type RetentionCleaner interface {
 	CleanupAuditRetention(ctx context.Context, cutoff time.Time) error
 }
 
-var indexWriter = struct {
-	sync.RWMutex
-	writer IndexWriter
-}{}
-
-func currentIndexWriter() IndexWriter {
-	indexWriter.RLock()
-	defer indexWriter.RUnlock()
-	return indexWriter.writer
-}
-
-func SetIndexWriter(writer IndexWriter) {
-	indexWriter.Lock()
-	defer indexWriter.Unlock()
-	indexWriter.writer = writer
-}
-
-func WriteEvent(ctx context.Context, cfg config.GatewayAuditConfig, event *Event) error {
+func WriteEvent(ctx context.Context, cfg config.GatewayAuditConfig, event *Event) (*JSONLWriteResult, error) {
 	if event == nil {
-		return nil
+		return nil, nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	var result *JSONLWriteResult
 	if cfg.FileEnabled {
 		var fileErr error
-		result, fileErr = writeJSONL(cfg.FilePath, cfg.RetentionDays, event)
+		result, fileErr = writeJSONL(cfg.FilePath, event)
 		if fileErr != nil {
-			return fileErr
+			metrics.jsonlWriteFailedTotal.Add(1)
+			logger.FromContext(ctx).Warn("gateway.audit.jsonl_write_failed", zap.Error(fileErr))
+			logger.WriteSinkEvent("warn", "gateway.audit", MetricAuditJSONLWriteFailedTotal, map[string]any{
+				"audit_id":  event.AuditID,
+				"file_path": cfg.FilePath,
+				"error":     fileErr.Error(),
+			})
+			return nil, fileErr
 		}
 	}
 	if cfg.OpsIndexEnabled {
 		writeOpsIndex(event)
 	}
-	writer := currentIndexWriter()
-	cleanupAuditDBIfDue(ctx, cfg.FilePath, cfg.RetentionDays, writer)
-	if writer != nil {
-		if err := writer.InsertAuditIndex(ctx, buildIndexRecord(cfg, event, result)); err != nil {
-			logger.FromContext(ctx).Warn("gateway.audit.index_failed", zap.Error(err))
+	if cfg.IndexAsyncEnabled {
+		record := buildIndexRecord(cfg, event, result)
+		if dispatcher := CurrentDispatcher(); dispatcher != nil {
+			dispatcher.Enqueue(ctx, IndexJob{Record: record})
+		} else {
+			logger.FromContext(ctx).Warn("gateway.audit.index_dispatcher_unavailable",
+				zap.String("audit_id", record.AuditID),
+				zap.String("file_path", record.FilePath),
+				zap.Int64("file_offset", record.FileOffset),
+			)
 		}
 	}
-	return nil
+	return result, nil
 }
 
-func writeJSONL(path string, retentionDays int, event *Event) (*JSONLWriteResult, error) {
+func writeJSONL(path string, event *Event) (*JSONLWriteResult, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return nil, errors.New("audit file path is empty")
 	}
-	basePath := path
 	path = jsonlShardPath(path, event.Timestamp)
 	line, err := json.Marshal(event)
 	if err != nil {
@@ -132,9 +125,6 @@ func writeJSONL(path string, retentionDays int, event *Event) (*JSONLWriteResult
 			return nil, err
 		}
 	}
-	if err := cleanupJSONLIfDue(basePath, retentionDays); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return nil, err
@@ -149,20 +139,6 @@ func writeJSONL(path string, retentionDays int, event *Event) (*JSONLWriteResult
 		return nil, err
 	}
 	return &JSONLWriteResult{FilePath: path, FileOffset: offset, LineBytes: int64(len(line))}, nil
-}
-
-func cleanupJSONLIfDue(path string, retentionDays int) error {
-	if retentionDays <= 0 {
-		return nil
-	}
-	now := time.Now()
-	if last, ok := cleanupState.Load(path); ok {
-		if t, ok := last.(time.Time); ok && now.Sub(t) < time.Hour {
-			return nil
-		}
-	}
-	cleanupState.Store(path, now)
-	return cleanupJSONL(path, retentionCutoffDate(now, retentionDays))
 }
 
 func cleanupJSONL(path string, cutoff time.Time) error {
@@ -195,30 +171,6 @@ func cleanupJSONL(path string, cutoff time.Time) error {
 		}
 	}
 	return nil
-}
-
-func cleanupAuditDBIfDue(ctx context.Context, path string, retentionDays int, writer IndexWriter) {
-	if retentionDays <= 0 || writer == nil {
-		return
-	}
-	cleaner, ok := writer.(RetentionCleaner)
-	if !ok {
-		return
-	}
-	key := "db:" + strings.TrimSpace(path)
-	if key == "db:" {
-		key = "db:gateway_audit"
-	}
-	now := time.Now()
-	if last, ok := cleanupState.Load(key); ok {
-		if t, ok := last.(time.Time); ok && now.Sub(t) < time.Hour {
-			return
-		}
-	}
-	cleanupState.Store(key, now)
-	if err := cleaner.CleanupAuditRetention(ctx, retentionCutoffDate(now, retentionDays)); err != nil {
-		logger.FromContext(ctx).Warn("gateway.audit.retention_cleanup_failed", zap.Error(err))
-	}
 }
 
 func retentionCutoffDate(now time.Time, retentionDays int) time.Time {

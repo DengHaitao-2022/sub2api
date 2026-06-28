@@ -49,7 +49,7 @@ func GatewayAuditMiddleware(cfg config.GatewayAuditConfig, enabledCheck ...Gatew
 		c.Next()
 
 		event := buildFinalEvent(c, auditCtx, writer, time.Since(started))
-		if err := WriteEvent(c.Request.Context(), cfg, event); err != nil {
+		if _, err := WriteEvent(c.Request.Context(), cfg, event); err != nil {
 			logger.FromContext(c.Request.Context()).Warn("gateway.audit.write_failed", zap.Error(err))
 		}
 	}

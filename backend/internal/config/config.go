@@ -818,6 +818,20 @@ type GatewayAuditConfig struct {
 	FilePath    string `mapstructure:"file_path"`
 
 	OpsIndexEnabled bool `mapstructure:"ops_index_enabled"`
+	IndexTimeoutMs  int  `mapstructure:"index_timeout_ms"`
+
+	IndexAsyncEnabled    bool `mapstructure:"index_async_enabled"`
+	IndexQueueSize       int  `mapstructure:"index_queue_size"`
+	IndexWorkerCount     int  `mapstructure:"index_worker_count"`
+	IndexBatchSize       int  `mapstructure:"index_batch_size"`
+	IndexFlushIntervalMs int  `mapstructure:"index_flush_interval_ms"`
+	IndexWriteTimeoutMs  int  `mapstructure:"index_write_timeout_ms"`
+
+	BackfillEnabled    bool `mapstructure:"backfill_enabled"`
+	BackfillIntervalMs int  `mapstructure:"backfill_interval_ms"`
+	BackfillBatchSize  int  `mapstructure:"backfill_batch_size"`
+
+	RetentionCleanupIntervalMinutes int `mapstructure:"retention_cleanup_interval_minutes"`
 
 	MaxInputBodyBytes  int64 `mapstructure:"max_input_body_bytes"`
 	MaxOutputBodyBytes int64 `mapstructure:"max_output_body_bytes"`
@@ -1932,6 +1946,17 @@ func setDefaults() {
 	viper.SetDefault("gateway.audit.file_enabled", true)
 	viper.SetDefault("gateway.audit.file_path", "/app/data/audit/audit.jsonl")
 	viper.SetDefault("gateway.audit.ops_index_enabled", true)
+	viper.SetDefault("gateway.audit.index_timeout_ms", 2000)
+	viper.SetDefault("gateway.audit.index_async_enabled", true)
+	viper.SetDefault("gateway.audit.index_queue_size", 10000)
+	viper.SetDefault("gateway.audit.index_worker_count", 2)
+	viper.SetDefault("gateway.audit.index_batch_size", 200)
+	viper.SetDefault("gateway.audit.index_flush_interval_ms", 200)
+	viper.SetDefault("gateway.audit.index_write_timeout_ms", 2000)
+	viper.SetDefault("gateway.audit.backfill_enabled", true)
+	viper.SetDefault("gateway.audit.backfill_interval_ms", 30000)
+	viper.SetDefault("gateway.audit.backfill_batch_size", 500)
+	viper.SetDefault("gateway.audit.retention_cleanup_interval_minutes", 60)
 	viper.SetDefault("gateway.audit.max_input_body_bytes", int64(64*1024))
 	viper.SetDefault("gateway.audit.max_output_body_bytes", int64(128*1024))
 	viper.SetDefault("gateway.audit.max_string_value_bytes", 8*1024)
@@ -2764,6 +2789,30 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.MaxLineSize != 0 && c.Gateway.MaxLineSize < 1024*1024 {
 		return fmt.Errorf("gateway.max_line_size must be at least 1MB")
+	}
+	if c.Gateway.Audit.IndexQueueSize < 0 {
+		return fmt.Errorf("gateway.audit.index_queue_size must be non-negative")
+	}
+	if c.Gateway.Audit.IndexWorkerCount < 0 {
+		return fmt.Errorf("gateway.audit.index_worker_count must be non-negative")
+	}
+	if c.Gateway.Audit.IndexBatchSize < 0 {
+		return fmt.Errorf("gateway.audit.index_batch_size must be non-negative")
+	}
+	if c.Gateway.Audit.IndexFlushIntervalMs < 0 {
+		return fmt.Errorf("gateway.audit.index_flush_interval_ms must be non-negative")
+	}
+	if c.Gateway.Audit.IndexWriteTimeoutMs < 0 {
+		return fmt.Errorf("gateway.audit.index_write_timeout_ms must be non-negative")
+	}
+	if c.Gateway.Audit.BackfillIntervalMs < 0 {
+		return fmt.Errorf("gateway.audit.backfill_interval_ms must be non-negative")
+	}
+	if c.Gateway.Audit.BackfillBatchSize < 0 {
+		return fmt.Errorf("gateway.audit.backfill_batch_size must be non-negative")
+	}
+	if c.Gateway.Audit.RetentionCleanupIntervalMinutes < 0 {
+		return fmt.Errorf("gateway.audit.retention_cleanup_interval_minutes must be non-negative")
 	}
 	if c.Gateway.UsageRecord.WorkerCount <= 0 {
 		return fmt.Errorf("gateway.usage_record.worker_count must be positive")

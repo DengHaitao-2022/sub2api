@@ -17,100 +17,11 @@ type gatewayAuditRepository struct {
 }
 
 func NewGatewayAuditRepository(db *sql.DB) service.GatewayAuditRepository {
-	repo := &gatewayAuditRepository{db: db}
-	audit.SetIndexWriter(repo)
-	return repo
+	return &gatewayAuditRepository{db: db}
 }
 
 func (r *gatewayAuditRepository) InsertAuditIndex(ctx context.Context, record *audit.IndexRecord) error {
-	if r == nil || r.db == nil {
-		return fmt.Errorf("nil gateway audit repository")
-	}
-	if record == nil || strings.TrimSpace(record.AuditID) == "" {
-		return nil
-	}
-	createdAt := record.CreatedAt
-	if createdAt.IsZero() {
-		createdAt = time.Now()
-	}
-	_, err := r.db.ExecContext(ctx, `
-INSERT INTO gateway_audit_index (
-  audit_id, request_id, client_request_id, user_id, api_key_id, account_id, group_id,
-  platform, model, inbound_endpoint, upstream_endpoint, method, path, status_code, error_type,
-  input_hash, output_hash, input_size, output_size, input_truncated, output_truncated,
-  duration_ms, time_to_first_token_ms, attempt_count, has_failover,
-  first_upstream_status_code, final_upstream_status_code,
-  capture_mode, sampled, file_path, file_offset, line_bytes, created_at
-) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
-) ON CONFLICT (audit_id) DO UPDATE SET
-  request_id = EXCLUDED.request_id,
-  client_request_id = EXCLUDED.client_request_id,
-  user_id = EXCLUDED.user_id,
-  api_key_id = EXCLUDED.api_key_id,
-  account_id = EXCLUDED.account_id,
-  group_id = EXCLUDED.group_id,
-  platform = EXCLUDED.platform,
-  model = EXCLUDED.model,
-  inbound_endpoint = EXCLUDED.inbound_endpoint,
-  upstream_endpoint = EXCLUDED.upstream_endpoint,
-  method = EXCLUDED.method,
-  path = EXCLUDED.path,
-  status_code = EXCLUDED.status_code,
-  error_type = EXCLUDED.error_type,
-  input_hash = EXCLUDED.input_hash,
-  output_hash = EXCLUDED.output_hash,
-  input_size = EXCLUDED.input_size,
-  output_size = EXCLUDED.output_size,
-  input_truncated = EXCLUDED.input_truncated,
-  output_truncated = EXCLUDED.output_truncated,
-  duration_ms = EXCLUDED.duration_ms,
-  time_to_first_token_ms = EXCLUDED.time_to_first_token_ms,
-  attempt_count = EXCLUDED.attempt_count,
-  has_failover = EXCLUDED.has_failover,
-  first_upstream_status_code = EXCLUDED.first_upstream_status_code,
-  final_upstream_status_code = EXCLUDED.final_upstream_status_code,
-  capture_mode = EXCLUDED.capture_mode,
-  sampled = EXCLUDED.sampled,
-  file_path = EXCLUDED.file_path,
-  file_offset = EXCLUDED.file_offset,
-  line_bytes = EXCLUDED.line_bytes,
-  created_at = EXCLUDED.created_at`,
-		record.AuditID,
-		auditNullString(record.RequestID),
-		auditNullString(record.ClientRequestID),
-		auditNullInt64(record.UserID),
-		auditNullInt64(record.APIKeyID),
-		auditNullInt64(record.AccountID),
-		auditNullInt64(record.GroupID),
-		auditNullString(record.Platform),
-		auditNullString(record.Model),
-		auditNullString(record.InboundEndpoint),
-		auditNullString(record.UpstreamEndpoint),
-		auditNullString(record.Method),
-		auditNullString(record.Path),
-		auditNullInt(record.StatusCode),
-		auditNullString(record.ErrorType),
-		auditNullString(record.InputHash),
-		auditNullString(record.OutputHash),
-		record.InputSize,
-		record.OutputSize,
-		record.InputTruncated,
-		record.OutputTruncated,
-		record.DurationMs,
-		record.TimeToFirstTokenMs,
-		record.AttemptCount,
-		record.HasFailover,
-		auditNullInt(record.FirstUpstreamStatusCode),
-		auditNullInt(record.FinalUpstreamStatusCode),
-		auditNullString(record.CaptureMode),
-		record.Sampled,
-		auditNullString(record.FilePath),
-		record.FileOffset,
-		record.LineBytes,
-		createdAt,
-	)
-	return err
+	return r.BatchInsertAuditIndex(ctx, []*audit.IndexRecord{record})
 }
 
 func (r *gatewayAuditRepository) CleanupAuditRetention(ctx context.Context, cutoff time.Time) error {

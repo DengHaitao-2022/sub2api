@@ -47,9 +47,9 @@ func TestCleanupJSONLDeletesExpiredDateShardsOnly(t *testing.T) {
 
 func TestWriteEventIndexesJSONLLocation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
-	writer := &recordingIndexWriter{}
-	SetIndexWriter(writer)
-	defer SetIndexWriter(nil)
+	dispatcher := NewDispatcherWithWait(1, 0)
+	SetDispatcher(dispatcher)
+	defer SetDispatcher(nil)
 
 	event := &Event{
 		Timestamp:  time.Date(2026, 6, 29, 12, 0, 0, 0, time.Local),
@@ -67,19 +67,74 @@ func TestWriteEventIndexesJSONLLocation(t *testing.T) {
 		OpsIndexEnabled:   false,
 		InputCaptureMode:  "preview",
 		OutputCaptureMode: "preview",
+		IndexAsyncEnabled: true,
 	}
-	if err := WriteEvent(context.Background(), cfg, event); err != nil {
+	result, err := WriteEvent(context.Background(), cfg, event)
+	if err != nil {
 		t.Fatalf("WriteEvent: %v", err)
 	}
-	if writer.record == nil {
-		t.Fatal("expected index record")
+	if result == nil {
+		t.Fatal("expected JSONL result")
+	}
+	var record *IndexRecord
+	select {
+	case job := <-dispatcher.Jobs():
+		record = job.Record
+	default:
+		t.Fatal("expected queued index job")
 	}
 	wantPath := filepath.Join(filepath.Dir(path), "audit-2026-06-29.jsonl")
-	if writer.record.FilePath != wantPath || writer.record.FileOffset != 0 || writer.record.LineBytes <= 0 {
-		t.Fatalf("bad jsonl location: %#v", writer.record)
+	if record.FilePath != wantPath || record.FileOffset != 0 || record.LineBytes <= 0 {
+		t.Fatalf("bad jsonl location: %#v", record)
 	}
-	if writer.record.AuditID != "aud_test" || writer.record.RequestID != "req_test" || writer.record.OutputTruncated != true {
-		t.Fatalf("bad index metadata: %#v", writer.record)
+	if record.AuditID != "aud_test" || record.RequestID != "req_test" || record.OutputTruncated != true {
+		t.Fatalf("bad index metadata: %#v", record)
+	}
+}
+
+func TestWriteEventQueueFullDoesNotFailJSONLWrite(t *testing.T) {
+	resetMetricsForTest()
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	dispatcher := NewDispatcherWithWait(1, 0)
+	SetDispatcher(dispatcher)
+	defer SetDispatcher(nil)
+
+	if ok := dispatcher.Enqueue(context.Background(), IndexJob{Record: &IndexRecord{AuditID: "queued"}}); !ok {
+		t.Fatal("test setup should fill queue")
+	}
+
+	event := &Event{
+		Timestamp: time.Date(2026, 6, 29, 13, 0, 0, 0, time.Local),
+		Event:     eventGatewayRequestCompleted,
+		AuditID:   "aud_queue_full",
+		RequestID: "req_queue_full",
+	}
+	cfg := config.GatewayAuditConfig{
+		FileEnabled:       true,
+		FilePath:          path,
+		OpsIndexEnabled:   false,
+		InputCaptureMode:  "preview",
+		OutputCaptureMode: "preview",
+		IndexAsyncEnabled: true,
+	}
+
+	result, err := WriteEvent(context.Background(), cfg, event)
+	if err != nil {
+		t.Fatalf("WriteEvent: %v", err)
+	}
+	if result == nil || result.LineBytes <= 0 {
+		t.Fatalf("expected JSONL result, got %#v", result)
+	}
+	wantPath := filepath.Join(filepath.Dir(path), "audit-2026-06-29.jsonl")
+	raw, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("read audit jsonl: %v", err)
+	}
+	if !strings.Contains(string(raw), `"audit_id":"aud_queue_full"`) {
+		t.Fatalf("expected JSONL to contain audit event, raw=%s", string(raw))
+	}
+	if got := SnapshotMetrics().IndexQueueFullTotal; got != 1 {
+		t.Fatalf("queue full metric = %d, want 1", got)
 	}
 }
 
@@ -98,11 +153,11 @@ func TestWriteJSONLDateShardPreservesOffsets(t *testing.T) {
 		RequestID: "req_second",
 	}
 
-	firstResult, err := writeJSONL(path, 0, first)
+	firstResult, err := writeJSONL(path, first)
 	if err != nil {
 		t.Fatalf("write first: %v", err)
 	}
-	secondResult, err := writeJSONL(path, 0, second)
+	secondResult, err := writeJSONL(path, second)
 	if err != nil {
 		t.Fatalf("write second: %v", err)
 	}
@@ -143,13 +198,4 @@ func TestBuildIndexRecordCapturesAttemptSummary(t *testing.T) {
 	if record.FirstUpstreamStatusCode != 503 || record.FinalUpstreamStatusCode != 200 {
 		t.Fatalf("bad upstream statuses: first=%d final=%d", record.FirstUpstreamStatusCode, record.FinalUpstreamStatusCode)
 	}
-}
-
-type recordingIndexWriter struct {
-	record *IndexRecord
-}
-
-func (w *recordingIndexWriter) InsertAuditIndex(_ context.Context, record *IndexRecord) error {
-	w.record = record
-	return nil
 }

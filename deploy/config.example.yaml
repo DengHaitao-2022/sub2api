@@ -257,6 +257,18 @@ gateway:
     # Write a lightweight metadata index to Ops System Log; full bodies stay in JSONL only.
     # 向 Ops System Log 写入轻量元数据索引；完整 input/output 仅保存在 JSONL。
     ops_index_enabled: true
+    # PostgreSQL gateway_audit_index is maintained asynchronously from JSONL/WAL.
+    # PostgreSQL gateway_audit_index 作为查询索引，由后台 worker/backfill 从 JSONL 异步维护。
+    index_async_enabled: true
+    index_queue_size: 10000
+    index_worker_count: 2
+    index_batch_size: 200
+    index_flush_interval_ms: 200
+    index_write_timeout_ms: 2000
+    backfill_enabled: true
+    backfill_interval_ms: 30000
+    backfill_batch_size: 500
+    retention_cleanup_interval_minutes: 60
     max_input_body_bytes: 65536
     max_output_body_bytes: 131072
     max_string_value_bytes: 8192
