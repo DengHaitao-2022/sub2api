@@ -164,17 +164,45 @@ func (r *gatewayAuditRepository) GetGatewayAuditByRequest(ctx context.Context, r
 	if requestID == "" {
 		return nil, service.ErrGatewayAuditNotFound
 	}
-	args := []any{requestID}
-	where := "WHERE i.request_id = $1"
+	variants := buildGatewayAuditLookupVariants(requestID)
+	if len(variants) == 0 {
+		return nil, service.ErrGatewayAuditNotFound
+	}
+
+	var query strings.Builder
+	query.WriteString(`
+WITH variants(request_id, client_request_id, rank) AS (
+  VALUES `)
+
+	args := make([]any, 0, len(variants)*3+1)
+	for i, variant := range variants {
+		if i > 0 {
+			query.WriteByte(',')
+		}
+		args = append(args, variant.RequestID, variant.ClientRequestID, variant.Rank)
+		fmt.Fprintf(&query, "($%d::text,$%d::text,$%d::int)", len(args)-2, len(args)-1, len(args))
+	}
+
+	query.WriteString(`
+)
+SELECT
+`)
+	query.WriteString(gatewayAuditSelectColumnsSQL("i"))
+	query.WriteString(`
+FROM gateway_audit_index i
+JOIN variants v ON (
+  (v.request_id <> '' AND v.request_id = i.request_id)
+  OR (v.client_request_id <> '' AND v.client_request_id = i.client_request_id)
+)`)
 	if apiKeyID > 0 {
 		args = append(args, apiKeyID)
-		where += " AND i.api_key_id = $2"
+		fmt.Fprintf(&query, "\nWHERE i.api_key_id = $%d", len(args))
 	}
-	row := r.db.QueryRowContext(ctx, gatewayAuditSelectSQL()+`
-FROM gateway_audit_index i
-`+where+`
-ORDER BY i.created_at DESC
-LIMIT 1`, args...)
+	query.WriteString(`
+ORDER BY v.rank ASC, i.created_at DESC, i.audit_id DESC
+LIMIT 1`)
+
+	row := r.db.QueryRowContext(ctx, query.String(), args...)
 	item, err := scanGatewayAuditRow(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -190,49 +218,59 @@ func (r *gatewayAuditRepository) BatchFindGatewayAuditByRequest(ctx context.Cont
 	if r == nil || r.db == nil || len(keys) == 0 {
 		return out, nil
 	}
-	values := make([]string, 0, len(keys))
-	args := make([]any, 0, len(keys)*2)
-	for _, key := range keys {
-		key.RequestID = strings.TrimSpace(key.RequestID)
-		if key.RequestID == "" || key.APIKeyID <= 0 {
-			continue
-		}
-		if _, ok := out[key]; ok {
-			continue
-		}
-		out[key] = nil
-		args = append(args, key.RequestID, key.APIKeyID)
-		values = append(values, fmt.Sprintf("($%d::text,$%d::bigint)", len(args)-1, len(args)))
-	}
-	if len(values) == 0 {
+	candidates := buildGatewayAuditBatchLookupCandidates(keys, out)
+	if len(candidates) == 0 {
 		return out, nil
 	}
-	rows, err := r.db.QueryContext(ctx, `
-WITH keys(request_id, api_key_id) AS (
-  VALUES `+strings.Join(values, ",")+`
+
+	var query strings.Builder
+	query.WriteString(`
+WITH keys(input_request_id, input_api_key_id, lookup_request_id, lookup_client_request_id, rank) AS (
+  VALUES `)
+	args := make([]any, 0, len(candidates)*5)
+	for i, candidate := range candidates {
+		if i > 0 {
+			query.WriteByte(',')
+		}
+		args = append(args,
+			candidate.InputKey.RequestID,
+			candidate.InputKey.APIKeyID,
+			candidate.LookupRequestID,
+			candidate.LookupClientRequestID,
+			candidate.Rank,
+		)
+		fmt.Fprintf(&query, "($%d::text,$%d::bigint,$%d::text,$%d::text,$%d::int)", len(args)-4, len(args)-3, len(args)-2, len(args)-1, len(args))
+	}
+	query.WriteString(`
 )
-`+gatewayAuditSelectSQL()+`
+SELECT DISTINCT ON (k.input_request_id, k.input_api_key_id)
+  k.input_request_id,
+  k.input_api_key_id,
+`)
+	query.WriteString(gatewayAuditSelectColumnsSQL("i"))
+	query.WriteString(`
 FROM gateway_audit_index i
-JOIN keys k ON k.request_id = i.request_id AND k.api_key_id = i.api_key_id
-ORDER BY i.request_id, i.api_key_id, i.created_at DESC`, args...)
+JOIN keys k ON k.input_api_key_id = i.api_key_id AND (
+  (k.lookup_request_id <> '' AND k.lookup_request_id = i.request_id)
+  OR (k.lookup_client_request_id <> '' AND k.lookup_client_request_id = i.client_request_id)
+)
+ORDER BY k.input_request_id, k.input_api_key_id, k.rank ASC, i.created_at DESC, i.audit_id DESC`)
+
+	rows, err := r.db.QueryContext(ctx, query.String(), args...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	items, err := scanGatewayAuditRows(rows)
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range items {
-		if item == nil || item.RequestID == "" || item.APIKeyID == nil {
-			continue
+	for rows.Next() {
+		key, item, err := scanGatewayAuditRowWithLookupKey(rows)
+		if err != nil {
+			return nil, err
 		}
-		key := service.GatewayAuditRequestKey{RequestID: item.RequestID, APIKeyID: *item.APIKeyID}
 		if out[key] == nil {
 			out[key] = item
 		}
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (r *gatewayAuditRepository) InsertGatewayAuditAccessLog(ctx context.Context, log *service.GatewayAuditAccessLog) error {
@@ -423,42 +461,48 @@ func buildGatewayAuditWhere(filter *service.GatewayAuditFilter) (string, []any) 
 }
 
 func gatewayAuditSelectSQL() string {
-	return `
-SELECT
-  i.audit_id,
-  COALESCE(i.request_id, ''),
-  COALESCE(i.client_request_id, ''),
-  i.user_id,
-  i.api_key_id,
-  i.account_id,
-  i.group_id,
-  COALESCE(i.platform, ''),
-  COALESCE(i.model, ''),
-  COALESCE(i.inbound_endpoint, ''),
-  COALESCE(i.upstream_endpoint, ''),
-  COALESCE(i.method, ''),
-  COALESCE(i.path, ''),
-  COALESCE(i.status_code, 0),
-  COALESCE(i.error_type, ''),
-  COALESCE(i.input_hash, ''),
-  COALESCE(i.output_hash, ''),
-  COALESCE(i.input_size, 0),
-  COALESCE(i.output_size, 0),
-  i.input_truncated,
-  i.output_truncated,
-  COALESCE(i.duration_ms, 0),
-  COALESCE(i.time_to_first_token_ms, 0),
-  COALESCE(i.attempt_count, 0),
-  i.has_failover,
-  COALESCE(i.first_upstream_status_code, 0),
-  COALESCE(i.final_upstream_status_code, 0),
-  COALESCE(i.capture_mode, ''),
-  i.sampled,
-  COALESCE(i.file_path, ''),
-  i.file_offset,
-  i.line_bytes,
-  i.created_at
-`
+	return "\nSELECT\n" + gatewayAuditSelectColumnsSQL("i")
+}
+
+func gatewayAuditSelectColumnsSQL(alias string) string {
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		alias = "i"
+	}
+	return fmt.Sprintf(`  %s.audit_id,
+  COALESCE(%s.request_id, ''),
+  COALESCE(%s.client_request_id, ''),
+  %s.user_id,
+  %s.api_key_id,
+  %s.account_id,
+  %s.group_id,
+  COALESCE(%s.platform, ''),
+  COALESCE(%s.model, ''),
+  COALESCE(%s.inbound_endpoint, ''),
+  COALESCE(%s.upstream_endpoint, ''),
+  COALESCE(%s.method, ''),
+  COALESCE(%s.path, ''),
+  COALESCE(%s.status_code, 0),
+  COALESCE(%s.error_type, ''),
+  COALESCE(%s.input_hash, ''),
+  COALESCE(%s.output_hash, ''),
+  COALESCE(%s.input_size, 0),
+  COALESCE(%s.output_size, 0),
+  %s.input_truncated,
+  %s.output_truncated,
+  COALESCE(%s.duration_ms, 0),
+  COALESCE(%s.time_to_first_token_ms, 0),
+  COALESCE(%s.attempt_count, 0),
+  %s.has_failover,
+  COALESCE(%s.first_upstream_status_code, 0),
+  COALESCE(%s.final_upstream_status_code, 0),
+  COALESCE(%s.capture_mode, ''),
+  %s.sampled,
+  COALESCE(%s.file_path, ''),
+  %s.file_offset,
+  %s.line_bytes,
+  %s.created_at
+`, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias, alias)
 }
 
 type gatewayAuditScanner interface {
@@ -479,8 +523,31 @@ func scanGatewayAuditRows(rows *sql.Rows) ([]*service.GatewayAuditIndex, error) 
 
 func scanGatewayAuditRow(row gatewayAuditScanner) (*service.GatewayAuditIndex, error) {
 	item := &service.GatewayAuditIndex{}
+	if err := scanGatewayAuditRowInto(row, nil, item); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+func scanGatewayAuditRowWithLookupKey(row gatewayAuditScanner) (service.GatewayAuditRequestKey, *service.GatewayAuditIndex, error) {
+	key := service.GatewayAuditRequestKey{}
+	item := &service.GatewayAuditIndex{}
+	if err := scanGatewayAuditRowInto(row, &key, item); err != nil {
+		return service.GatewayAuditRequestKey{}, nil, err
+	}
+	return key, item, nil
+}
+
+func scanGatewayAuditRowInto(row gatewayAuditScanner, lookupKey *service.GatewayAuditRequestKey, item *service.GatewayAuditIndex) error {
+	if item == nil {
+		return fmt.Errorf("nil gateway audit index destination")
+	}
 	var userID, apiKeyID, accountID, groupID sql.NullInt64
-	if err := row.Scan(
+	dest := make([]any, 0, 35)
+	if lookupKey != nil {
+		dest = append(dest, &lookupKey.RequestID, &lookupKey.APIKeyID)
+	}
+	dest = append(dest,
 		&item.AuditID,
 		&item.RequestID,
 		&item.ClientRequestID,
@@ -514,8 +581,9 @@ func scanGatewayAuditRow(row gatewayAuditScanner) (*service.GatewayAuditIndex, e
 		&item.FileOffset,
 		&item.LineBytes,
 		&item.CreatedAt,
-	); err != nil {
-		return nil, err
+	)
+	if err := row.Scan(dest...); err != nil {
+		return err
 	}
 	if userID.Valid {
 		item.UserID = &userID.Int64
@@ -529,7 +597,92 @@ func scanGatewayAuditRow(row gatewayAuditScanner) (*service.GatewayAuditIndex, e
 	if groupID.Valid {
 		item.GroupID = &groupID.Int64
 	}
-	return item, nil
+	return nil
+}
+
+type gatewayAuditLookupVariant struct {
+	RequestID       string
+	ClientRequestID string
+	Rank            int
+}
+
+type gatewayAuditBatchLookupCandidate struct {
+	InputKey              service.GatewayAuditRequestKey
+	LookupRequestID       string
+	LookupClientRequestID string
+	Rank                  int
+}
+
+func buildGatewayAuditBatchLookupCandidates(keys []service.GatewayAuditRequestKey, out map[service.GatewayAuditRequestKey]*service.GatewayAuditIndex) []gatewayAuditBatchLookupCandidate {
+	candidates := make([]gatewayAuditBatchLookupCandidate, 0, len(keys)*2)
+	seen := make(map[string]struct{}, len(keys)*2)
+	for _, key := range keys {
+		key.RequestID = strings.TrimSpace(key.RequestID)
+		if key.RequestID == "" || key.APIKeyID <= 0 {
+			continue
+		}
+		if _, ok := out[key]; ok {
+			// key already initialized in result map; still need lookup candidates only once.
+		} else {
+			out[key] = nil
+		}
+		for _, variant := range buildGatewayAuditLookupVariants(key.RequestID) {
+			dedupeKey := fmt.Sprintf("%s|%d|%s|%s|%d", key.RequestID, key.APIKeyID, variant.RequestID, variant.ClientRequestID, variant.Rank)
+			if _, ok := seen[dedupeKey]; ok {
+				continue
+			}
+			seen[dedupeKey] = struct{}{}
+			candidates = append(candidates, gatewayAuditBatchLookupCandidate{
+				InputKey:              key,
+				LookupRequestID:       variant.RequestID,
+				LookupClientRequestID: variant.ClientRequestID,
+				Rank:                  variant.Rank,
+			})
+		}
+	}
+	return candidates
+}
+
+func buildGatewayAuditLookupVariants(requestID string) []gatewayAuditLookupVariant {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return nil
+	}
+	variants := make([]gatewayAuditLookupVariant, 0, 2)
+	seen := make(map[string]struct{}, 2)
+	add := func(requestValue, clientRequestValue string) {
+		requestValue = strings.TrimSpace(requestValue)
+		clientRequestValue = strings.TrimSpace(clientRequestValue)
+		if requestValue == "" && clientRequestValue == "" {
+			return
+		}
+		key := requestValue + "\x00" + clientRequestValue
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		variants = append(variants, gatewayAuditLookupVariant{
+			RequestID:       requestValue,
+			ClientRequestID: clientRequestValue,
+			Rank:            len(variants),
+		})
+	}
+
+	switch {
+	case strings.HasPrefix(requestID, "client:"):
+		add("", strings.TrimSpace(strings.TrimPrefix(requestID, "client:")))
+		add(requestID, "")
+	case strings.HasPrefix(requestID, "local:"):
+		add(strings.TrimSpace(strings.TrimPrefix(requestID, "local:")), "")
+		add(requestID, "")
+	case strings.HasPrefix(requestID, "generated:"):
+		add(requestID, "")
+	default:
+		add(requestID, "")
+		add("", requestID)
+	}
+
+	return variants
 }
 
 func auditNullString(value string) sql.NullString {
