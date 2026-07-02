@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	auditpkg "github.com/Wei-Shaw/sub2api/internal/audit"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -119,6 +121,25 @@ func TestOpsCaptureWriterPool_ResetOnRelease(t *testing.T) {
 	require.Zero(t, reused.buf.Len(), "writer should be reset before reuse")
 }
 
+func TestOpsCaptureWriter_NilSafeAfterRelease(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	writer := acquireOpsCaptureWriter(c.Writer)
+	releaseOpsCaptureWriter(writer)
+
+	require.NotPanics(t, func() {
+		require.Equal(t, http.StatusOK, writer.Status())
+		require.False(t, writer.Written())
+		require.Zero(t, writer.Size())
+		require.NotNil(t, writer.Header())
+		writer.WriteHeaderNow()
+		_, _ = writer.Write([]byte("ignored"))
+		_, _ = writer.WriteString("ignored")
+	})
+}
+
 func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -137,6 +158,81 @@ func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 		r.ServeHTTP(rec, req)
 	})
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestOpsErrorLoggerMiddleware_RestoresOriginalWriterAfterAuditWrap(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	auditCfg := config.GatewayAuditConfig{
+		Enabled:             true,
+		InputCaptureMode:    "preview",
+		OutputCaptureMode:   "preview",
+		FileEnabled:         false,
+		OpsIndexEnabled:     false,
+		MaxOutputBodyBytes:  1024,
+		MaxStringValueBytes: 1024,
+		MaxArrayItems:       10,
+		MaxObjectDepth:      8,
+		SampleRate:          1,
+		IncludePaths:        []string{"/v1/messages"},
+	}
+
+	var restored bool
+	var auditWrapped bool
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		original := c.Writer
+		c.Next()
+		restored = c.Writer == original
+	})
+	r.Use(OpsErrorLoggerMiddleware(nil))
+	r.Use(auditpkg.GatewayAuditMiddleware(auditCfg))
+	r.GET("/v1/messages", func(c *gin.Context) {
+		_, auditWrapped = c.Writer.(*auditpkg.ResponseWriter)
+		c.String(http.StatusOK, "ok")
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+	require.NotPanics(t, func() {
+		r.ServeHTTP(rec, req)
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, auditWrapped, "audit middleware should wrap the ops capture writer")
+	require.True(t, restored, "ops middleware should restore the original writer even after audit wraps it")
+}
+
+func TestOpsErrorLoggerMiddleware_PanicRecoveryNoWriterDoublePanic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	auditCfg := config.GatewayAuditConfig{
+		Enabled:             true,
+		InputCaptureMode:    "preview",
+		OutputCaptureMode:   "preview",
+		FileEnabled:         false,
+		OpsIndexEnabled:     false,
+		MaxOutputBodyBytes:  1024,
+		MaxStringValueBytes: 1024,
+		MaxArrayItems:       10,
+		MaxObjectDepth:      8,
+		SampleRate:          1,
+		IncludePaths:        []string{"/v1/messages"},
+	}
+
+	r := gin.New()
+	r.Use(middleware2.Recovery())
+	r.Use(OpsErrorLoggerMiddleware(nil))
+	r.Use(auditpkg.GatewayAuditMiddleware(auditCfg))
+	r.GET("/v1/messages", func(c *gin.Context) {
+		panic("boom")
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+	require.NotPanics(t, func() {
+		r.ServeHTTP(rec, req)
+	})
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 func TestIsKnownOpsErrorType(t *testing.T) {

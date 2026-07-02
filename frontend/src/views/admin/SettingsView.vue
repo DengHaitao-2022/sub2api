@@ -4030,6 +4030,23 @@
               </p>
             </div>
             <div class="space-y-5 p-6">
+              <!-- Gateway Audit -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.gatewayAudit") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.gatewayForwarding.gatewayAuditHint")
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.gateway_audit_enabled" />
+              </div>
+
               <!-- Fingerprint Unification -->
               <div class="flex items-center justify-between">
                 <div>
@@ -8095,6 +8112,7 @@ const form = reactive<SettingsForm>({
   allow_ungrouped_key_scheduling: false,
   openai_advanced_scheduler_enabled: false,
   // Gateway forwarding behavior
+  gateway_audit_enabled: false,
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -9314,6 +9332,7 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      gateway_audit_enabled: form.gateway_audit_enabled,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:

@@ -25,6 +25,7 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	auditService   *service.GatewayAuditService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -33,12 +34,18 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	auditServiceOpt ...*service.GatewayAuditService,
 ) *UsageHandler {
+	var auditService *service.GatewayAuditService
+	if len(auditServiceOpt) > 0 {
+		auditService = auditServiceOpt[0]
+	}
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		auditService:   auditService,
 	}
 }
 
@@ -192,11 +199,63 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
+	auditByRequest := h.lookupAuditForUsage(c.Request.Context(), records)
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		item := *dto.UsageLogFromServiceAdmin(&records[i])
+		annotateUsageAudit(&item, &records[i], auditByRequest)
+		out = append(out, item)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+func (h *UsageHandler) lookupAuditForUsage(ctx context.Context, records []service.UsageLog) map[service.GatewayAuditRequestKey]*service.GatewayAuditIndex {
+	if h == nil || h.auditService == nil || len(records) == 0 {
+		return nil
+	}
+	keys := make([]service.GatewayAuditRequestKey, 0, len(records))
+	seen := make(map[service.GatewayAuditRequestKey]struct{}, len(records))
+	for i := range records {
+		requestID := strings.TrimSpace(records[i].RequestID)
+		if requestID == "" || records[i].APIKeyID <= 0 {
+			continue
+		}
+		key := service.GatewayAuditRequestKey{RequestID: requestID, APIKeyID: records[i].APIKeyID}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	found, err := h.auditService.BatchFindByRequest(ctx, keys)
+	if err != nil {
+		logger.LegacyPrintf("handler.admin.usage", "[AuditLink] 批量查询审计索引失败: %v", err)
+		return nil
+	}
+	return found
+}
+
+func annotateUsageAudit(item *dto.AdminUsageLog, log *service.UsageLog, audits map[service.GatewayAuditRequestKey]*service.GatewayAuditIndex) {
+	if item == nil || log == nil {
+		return
+	}
+	if strings.TrimSpace(log.RequestID) == "" {
+		item.AuditStatus = "no_request_id"
+		return
+	}
+	item.AuditStatus = "not_recorded"
+	if audits == nil {
+		return
+	}
+	key := service.GatewayAuditRequestKey{RequestID: strings.TrimSpace(log.RequestID), APIKeyID: log.APIKeyID}
+	if auditIndex := audits[key]; auditIndex != nil && auditIndex.AuditID != "" {
+		item.AuditAvailable = true
+		item.AuditID = &auditIndex.AuditID
+		item.AuditStatus = "captured"
+	}
 }
 
 // Stats handles getting usage statistics with filters
