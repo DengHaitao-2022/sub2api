@@ -184,6 +184,7 @@ type SystemSettings struct {
 	GatewayAuditFileEnabled                     bool     `json:"gateway_audit_file_enabled"`
 	GatewayAuditFilePath                        string   `json:"gateway_audit_file_path"`
 	GatewayAuditOpsIndexEnabled                 bool     `json:"gateway_audit_ops_index_enabled"`
+	GatewayAuditIndexEnabled                    bool     `json:"gateway_audit_index_enabled"`
 	GatewayAuditIndexAsyncEnabled               bool     `json:"gateway_audit_index_async_enabled"`
 	GatewayAuditIndexQueueSize                  int      `json:"gateway_audit_index_queue_size"`
 	GatewayAuditIndexWorkerCount                int      `json:"gateway_audit_index_worker_count"`

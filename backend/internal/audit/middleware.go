@@ -92,7 +92,7 @@ func outputCaptureBytes(cfg config.GatewayAuditConfig) int64 {
 	case captureModeNone, captureModeHash:
 		return 0
 	default:
-		return cfg.MaxOutputBodyBytes
+		return bodyCaptureLimit(cfg, cfg.OutputCaptureMode, true)
 	}
 }
 

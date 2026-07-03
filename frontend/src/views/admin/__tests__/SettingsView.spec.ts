@@ -381,6 +381,7 @@ const baseSettingsResponse = {
   gateway_audit_file_enabled: true,
   gateway_audit_file_path: "/app/data/audit/audit.jsonl",
   gateway_audit_ops_index_enabled: true,
+  gateway_audit_index_enabled: true,
   gateway_audit_index_async_enabled: true,
   gateway_audit_index_queue_size: 10000,
   gateway_audit_index_worker_count: 2,
@@ -658,6 +659,7 @@ describe("admin SettingsView payment visible method controls", () => {
       gateway_audit_enabled: true,
       gateway_audit_input_capture_mode: "full",
       gateway_audit_output_capture_mode: "hash",
+      gateway_audit_index_enabled: true,
       gateway_audit_sample_rate: 0.5,
       gateway_audit_include_paths: ["/v1/messages", "/v1/responses"],
     });
@@ -674,6 +676,7 @@ describe("admin SettingsView payment visible method controls", () => {
         gateway_audit_enabled: true,
         gateway_audit_input_capture_mode: "full",
         gateway_audit_output_capture_mode: "hash",
+        gateway_audit_index_enabled: true,
         gateway_audit_sample_rate: 0.5,
         gateway_audit_include_paths: ["/v1/messages", "/v1/responses"],
       }),

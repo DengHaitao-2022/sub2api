@@ -3,6 +3,7 @@ package audit
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -85,5 +86,61 @@ func TestBuildBodyRecordFullModePreservesStructuredBody(t *testing.T) {
 	}
 	if got := obj["secret"]; got != "***" {
 		t.Fatalf("redaction must still apply in full mode, got %#v", got)
+	}
+}
+
+func TestBuildBodyRecordFullModeZeroLimitUsesDefault(t *testing.T) {
+	body := []byte(strings.Repeat("x", int(config.DefaultGatewayAuditMaxInputBodyBytes)+1))
+	record := BuildBodyRecord(body, "text/plain", "full", config.GatewayAuditConfig{
+		MaxInputBodyBytes: 0,
+	}, false)
+	if record == nil {
+		t.Fatal("expected full record")
+	}
+	if !record.Truncated {
+		t.Fatal("full mode with zero limit should use default limit and truncate oversized input")
+	}
+	if got := len(record.Body.(string)); got != int(config.DefaultGatewayAuditMaxInputBodyBytes) {
+		t.Fatalf("captured bytes = %d, want default %d", got, config.DefaultGatewayAuditMaxInputBodyBytes)
+	}
+}
+
+func TestBuildBodyRecordFullModeOutputZeroLimitUsesDefault(t *testing.T) {
+	body := []byte(strings.Repeat("x", int(config.DefaultGatewayAuditMaxOutputBodyBytes)+1))
+	record := BuildBodyRecord(body, "text/plain", "full", config.GatewayAuditConfig{
+		MaxOutputBodyBytes: 0,
+	}, true)
+	if record == nil {
+		t.Fatal("expected full output record")
+	}
+	if !record.Truncated {
+		t.Fatal("full output mode with zero limit should use default limit and truncate oversized output")
+	}
+	if got := len(record.Body.(string)); got != int(config.DefaultGatewayAuditMaxOutputBodyBytes) {
+		t.Fatalf("captured bytes = %d, want default %d", got, config.DefaultGatewayAuditMaxOutputBodyBytes)
+	}
+}
+
+func TestBuildBodyRecordFullModeHardCapsAndRedacts(t *testing.T) {
+	body := []byte(`{"secret":"keep-redacted","payload":"` + strings.Repeat("x", int(config.MaxGatewayAuditFullInputBodyBytes)) + `"}`)
+	record := BuildBodyRecord(body, "application/json", "full", config.GatewayAuditConfig{
+		MaxInputBodyBytes: config.MaxGatewayAuditFullInputBodyBytes + 1024,
+		RedactKeys:        []string{"secret"},
+	}, false)
+	if record == nil {
+		t.Fatal("expected full record")
+	}
+	if !record.Truncated {
+		t.Fatal("full mode should truncate at hard cap")
+	}
+	if record.SizeBytes != int64(len(body)) {
+		t.Fatalf("size bytes = %d, want %d", record.SizeBytes, len(body))
+	}
+	bodyText, ok := record.Body.(string)
+	if !ok {
+		t.Fatalf("expected truncated invalid JSON to be stored as text, got %T", record.Body)
+	}
+	if strings.Contains(bodyText, "keep-redacted") {
+		t.Fatalf("redaction must still apply in truncated full mode, got prefix %.80q", bodyText)
 	}
 }

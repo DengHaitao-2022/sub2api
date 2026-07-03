@@ -810,6 +810,13 @@ type GatewayConfig struct {
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
 }
 
+const (
+	DefaultGatewayAuditMaxInputBodyBytes  int64 = 64 * 1024
+	DefaultGatewayAuditMaxOutputBodyBytes int64 = 128 * 1024
+	MaxGatewayAuditFullInputBodyBytes     int64 = 1024 * 1024
+	MaxGatewayAuditFullOutputBodyBytes    int64 = 2 * 1024 * 1024
+)
+
 type GatewayAuditConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 
@@ -823,6 +830,7 @@ type GatewayAuditConfig struct {
 	OpsIndexEnabled bool `mapstructure:"ops_index_enabled"`
 	IndexTimeoutMs  int  `mapstructure:"index_timeout_ms"`
 
+	IndexEnabled         bool `mapstructure:"index_enabled"`
 	IndexAsyncEnabled    bool `mapstructure:"index_async_enabled"`
 	IndexQueueSize       int  `mapstructure:"index_queue_size"`
 	IndexWorkerCount     int  `mapstructure:"index_worker_count"`
@@ -1954,6 +1962,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.audit.file_path", "/app/data/audit/audit.jsonl")
 	viper.SetDefault("gateway.audit.ops_index_enabled", true)
 	viper.SetDefault("gateway.audit.index_timeout_ms", 2000)
+	viper.SetDefault("gateway.audit.index_enabled", true)
 	viper.SetDefault("gateway.audit.index_async_enabled", true)
 	viper.SetDefault("gateway.audit.index_queue_size", 10000)
 	viper.SetDefault("gateway.audit.index_worker_count", 2)
@@ -1964,8 +1973,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.audit.backfill_interval_ms", 30000)
 	viper.SetDefault("gateway.audit.backfill_batch_size", 500)
 	viper.SetDefault("gateway.audit.retention_cleanup_interval_minutes", 60)
-	viper.SetDefault("gateway.audit.max_input_body_bytes", int64(64*1024))
-	viper.SetDefault("gateway.audit.max_output_body_bytes", int64(128*1024))
+	viper.SetDefault("gateway.audit.max_input_body_bytes", DefaultGatewayAuditMaxInputBodyBytes)
+	viper.SetDefault("gateway.audit.max_output_body_bytes", DefaultGatewayAuditMaxOutputBodyBytes)
 	viper.SetDefault("gateway.audit.max_string_value_bytes", 8*1024)
 	viper.SetDefault("gateway.audit.max_array_items", 50)
 	viper.SetDefault("gateway.audit.max_object_depth", 16)

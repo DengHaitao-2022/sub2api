@@ -124,14 +124,16 @@ type GatewayAuditStats struct {
 }
 
 type GatewayAuditHealth struct {
-	IndexedTotal        int64      `json:"indexed_total"`
-	LastIndexedAt       *time.Time `json:"last_indexed_at,omitempty"`
-	OldestIndexedAt     *time.Time `json:"oldest_indexed_at,omitempty"`
-	Recent24h           int64      `json:"recent_24h"`
-	Errors24h           int64      `json:"errors_24h"`
-	LastJSONLFilePath   string     `json:"last_jsonl_file_path,omitempty"`
-	LastJSONLFileExists bool       `json:"last_jsonl_file_exists"`
-	LastJSONLFileSize   int64      `json:"last_jsonl_file_size,omitempty"`
+	IndexedTotal        int64                 `json:"indexed_total"`
+	LastIndexedAt       *time.Time            `json:"last_indexed_at,omitempty"`
+	OldestIndexedAt     *time.Time            `json:"oldest_indexed_at,omitempty"`
+	Recent24h           int64                 `json:"recent_24h"`
+	Errors24h           int64                 `json:"errors_24h"`
+	LastJSONLFilePath   string                `json:"last_jsonl_file_path,omitempty"`
+	LastJSONLFileExists bool                  `json:"last_jsonl_file_exists"`
+	LastJSONLFileSize   int64                 `json:"last_jsonl_file_size,omitempty"`
+	Metrics             audit.MetricsSnapshot `json:"metrics"`
+	Runtime             audit.RuntimeStatus   `json:"runtime"`
 }
 
 type GatewayAuditDetail struct {
@@ -295,6 +297,10 @@ func (s *GatewayAuditService) Health(ctx context.Context) (*GatewayAuditHealth, 
 			health.LastJSONLFileExists = true
 			health.LastJSONLFileSize = info.Size()
 		}
+	}
+	if health != nil {
+		health.Metrics = audit.SnapshotMetrics()
+		health.Runtime = audit.SnapshotRuntimeStatus()
 	}
 	return health, nil
 }

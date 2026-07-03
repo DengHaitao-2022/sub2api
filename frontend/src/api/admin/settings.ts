@@ -570,6 +570,7 @@ export interface SystemSettings {
   gateway_audit_file_enabled: boolean;
   gateway_audit_file_path: string;
   gateway_audit_ops_index_enabled: boolean;
+  gateway_audit_index_enabled: boolean;
   gateway_audit_index_async_enabled: boolean;
   gateway_audit_index_queue_size: number;
   gateway_audit_index_worker_count: number;
@@ -847,6 +848,7 @@ export interface UpdateSettingsRequest {
   gateway_audit_file_enabled?: boolean;
   gateway_audit_file_path?: string;
   gateway_audit_ops_index_enabled?: boolean;
+  gateway_audit_index_enabled?: boolean;
   gateway_audit_index_async_enabled?: boolean;
   gateway_audit_index_queue_size?: number;
   gateway_audit_index_worker_count?: number;

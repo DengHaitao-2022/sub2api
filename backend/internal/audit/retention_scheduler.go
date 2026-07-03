@@ -38,7 +38,7 @@ func NewRetentionScheduler(cfg config.GatewayAuditConfig, cleaner RetentionClean
 }
 
 func (s *RetentionScheduler) Start() {
-	if s == nil || s.cfg.RetentionDays <= 0 {
+	if s == nil || !s.cfg.Enabled || s.cfg.RetentionDays <= 0 {
 		return
 	}
 	s.wg.Add(1)
@@ -78,7 +78,7 @@ func (s *RetentionScheduler) cleanupAndLog(ctx context.Context) {
 }
 
 func CleanupRetentionOnce(ctx context.Context, cfg config.GatewayAuditConfig, cleaner RetentionCleaner) error {
-	if cfg.RetentionDays <= 0 {
+	if !cfg.Enabled || cfg.RetentionDays <= 0 {
 		return nil
 	}
 	if ctx == nil {

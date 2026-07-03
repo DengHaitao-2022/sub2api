@@ -128,7 +128,10 @@ const gatewayForwardingDBTimeout = 5 * time.Second
 type cachedGatewayAuditConfig struct {
 	cfg       config.GatewayAuditConfig
 	expiresAt int64 // unix nano
+	version   int64
 }
+
+var gatewayAuditConfigCacheVersion atomic.Int64
 
 const gatewayAuditConfigCacheTTL = 60 * time.Second
 const gatewayAuditConfigErrorTTL = 5 * time.Second
@@ -2222,6 +2225,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyGatewayAuditFileEnabled] = strconv.FormatBool(settings.GatewayAuditFileEnabled)
 	updates[SettingKeyGatewayAuditFilePath] = strings.TrimSpace(settings.GatewayAuditFilePath)
 	updates[SettingKeyGatewayAuditOpsIndexEnabled] = strconv.FormatBool(settings.GatewayAuditOpsIndexEnabled)
+	updates[SettingKeyGatewayAuditIndexEnabled] = strconv.FormatBool(settings.GatewayAuditIndexEnabled)
 	updates[SettingKeyGatewayAuditIndexAsyncEnabled] = strconv.FormatBool(settings.GatewayAuditIndexAsyncEnabled)
 	updates[SettingKeyGatewayAuditIndexQueueSize] = strconv.Itoa(settings.GatewayAuditIndexQueueSize)
 	updates[SettingKeyGatewayAuditIndexWorkerCount] = strconv.Itoa(settings.GatewayAuditIndexWorkerCount)
@@ -2232,6 +2236,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyGatewayAuditBackfillIntervalMs] = strconv.Itoa(settings.GatewayAuditBackfillIntervalMs)
 	updates[SettingKeyGatewayAuditBackfillBatchSize] = strconv.Itoa(settings.GatewayAuditBackfillBatchSize)
 	updates[SettingKeyGatewayAuditRetentionCleanupIntervalMinutes] = strconv.Itoa(settings.GatewayAuditRetentionCleanupIntervalMinutes)
+	settings.GatewayAuditMaxInputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxInputBodyBytes,
+		settings.GatewayAuditInputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	settings.GatewayAuditMaxOutputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxOutputBodyBytes,
+		settings.GatewayAuditOutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
 	updates[SettingKeyGatewayAuditMaxInputBodyBytes] = strconv.FormatInt(settings.GatewayAuditMaxInputBodyBytes, 10)
 	updates[SettingKeyGatewayAuditMaxOutputBodyBytes] = strconv.FormatInt(settings.GatewayAuditMaxOutputBodyBytes, 10)
 	updates[SettingKeyGatewayAuditMaxStringValueBytes] = strconv.Itoa(settings.GatewayAuditMaxStringValueBytes)
@@ -2409,6 +2425,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
 	s.gatewayAuditConfigSF.Forget("gateway_audit_config")
+	gatewayAuditVersion := gatewayAuditConfigCacheVersion.Add(1)
 	gatewayAuditCfg := config.GatewayAuditConfig{}
 	if s != nil && s.cfg != nil {
 		gatewayAuditCfg = s.cfg.Gateway.Audit
@@ -2419,6 +2436,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	gatewayAuditCfg.FileEnabled = settings.GatewayAuditFileEnabled
 	gatewayAuditCfg.FilePath = settings.GatewayAuditFilePath
 	gatewayAuditCfg.OpsIndexEnabled = settings.GatewayAuditOpsIndexEnabled
+	gatewayAuditCfg.IndexEnabled = settings.GatewayAuditIndexEnabled
 	gatewayAuditCfg.IndexAsyncEnabled = settings.GatewayAuditIndexAsyncEnabled
 	gatewayAuditCfg.IndexQueueSize = settings.GatewayAuditIndexQueueSize
 	gatewayAuditCfg.IndexWorkerCount = settings.GatewayAuditIndexWorkerCount
@@ -2429,8 +2447,18 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	gatewayAuditCfg.BackfillIntervalMs = settings.GatewayAuditBackfillIntervalMs
 	gatewayAuditCfg.BackfillBatchSize = settings.GatewayAuditBackfillBatchSize
 	gatewayAuditCfg.RetentionCleanupIntervalMinutes = settings.GatewayAuditRetentionCleanupIntervalMinutes
-	gatewayAuditCfg.MaxInputBodyBytes = settings.GatewayAuditMaxInputBodyBytes
-	gatewayAuditCfg.MaxOutputBodyBytes = settings.GatewayAuditMaxOutputBodyBytes
+	gatewayAuditCfg.MaxInputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxInputBodyBytes,
+		settings.GatewayAuditInputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	gatewayAuditCfg.MaxOutputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxOutputBodyBytes,
+		settings.GatewayAuditOutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
 	gatewayAuditCfg.MaxStringValueBytes = settings.GatewayAuditMaxStringValueBytes
 	gatewayAuditCfg.MaxArrayItems = settings.GatewayAuditMaxArrayItems
 	gatewayAuditCfg.MaxObjectDepth = settings.GatewayAuditMaxObjectDepth
@@ -2441,7 +2469,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	gatewayAuditCfg.RetentionDays = settings.GatewayAuditRetentionDays
 	s.gatewayAuditConfigCache.Store(&cachedGatewayAuditConfig{
 		cfg:       gatewayAuditCfg,
-		expiresAt: time.Now().Add(gatewayAuditConfigCacheTTL).UnixNano(),
+		expiresAt: 0,
+		version:   gatewayAuditVersion,
 	})
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
 	antigravityUserAgentVersion := antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
@@ -2784,6 +2813,16 @@ func normalizeGatewayAuditCaptureMode(raw string, fallback string) string {
 	}
 }
 
+func normalizeGatewayAuditBodyLimit(value int64, mode string, defaultValue int64, fullMax int64) int64 {
+	if value <= 0 {
+		value = defaultValue
+	}
+	if normalizeGatewayAuditCaptureMode(mode, "preview") == "full" && fullMax > 0 && value > fullMax {
+		return fullMax
+	}
+	return value
+}
+
 func parseStringSliceJSONSetting(raw string, fallback []string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -2839,6 +2878,9 @@ func (s *SettingService) mergeGatewayAuditConfigSettings(values map[string]strin
 	}
 	if raw, ok := values[SettingKeyGatewayAuditOpsIndexEnabled]; ok && strings.TrimSpace(raw) != "" {
 		out.OpsIndexEnabled = strings.TrimSpace(raw) == "true"
+	}
+	if raw, ok := values[SettingKeyGatewayAuditIndexEnabled]; ok && strings.TrimSpace(raw) != "" {
+		out.IndexEnabled = strings.TrimSpace(raw) == "true"
 	}
 	if raw, ok := values[SettingKeyGatewayAuditIndexAsyncEnabled]; ok && strings.TrimSpace(raw) != "" {
 		out.IndexAsyncEnabled = strings.TrimSpace(raw) == "true"
@@ -2900,6 +2942,18 @@ func (s *SettingService) mergeGatewayAuditConfigSettings(values map[string]strin
 	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditRetentionDays])); err == nil && raw >= 0 {
 		out.RetentionDays = raw
 	}
+	out.MaxInputBodyBytes = normalizeGatewayAuditBodyLimit(
+		out.MaxInputBodyBytes,
+		out.InputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	out.MaxOutputBodyBytes = normalizeGatewayAuditBodyLimit(
+		out.MaxOutputBodyBytes,
+		out.OutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
 	return out
 }
 
@@ -2917,14 +2971,16 @@ func (s *SettingService) GetGatewayAuditConfig(ctx context.Context) config.Gatew
 	if s == nil || s.settingRepo == nil {
 		return base
 	}
+	currentVersion := gatewayAuditConfigCacheVersion.Load()
 	if cached, ok := s.gatewayAuditConfigCache.Load().(*cachedGatewayAuditConfig); ok && cached != nil {
-		if time.Now().UnixNano() < cached.expiresAt {
+		if cached.version == currentVersion && time.Now().UnixNano() < cached.expiresAt {
 			return cached.cfg
 		}
 	}
+	versionAtStart := currentVersion
 	val, _, _ := s.gatewayAuditConfigSF.Do("gateway_audit_config", func() (any, error) {
 		if cached, ok := s.gatewayAuditConfigCache.Load().(*cachedGatewayAuditConfig); ok && cached != nil {
-			if time.Now().UnixNano() < cached.expiresAt {
+			if cached.version == gatewayAuditConfigCacheVersion.Load() && time.Now().UnixNano() < cached.expiresAt {
 				return cached.cfg, nil
 			}
 		}
@@ -2937,6 +2993,7 @@ func (s *SettingService) GetGatewayAuditConfig(ctx context.Context) config.Gatew
 			SettingKeyGatewayAuditFileEnabled,
 			SettingKeyGatewayAuditFilePath,
 			SettingKeyGatewayAuditOpsIndexEnabled,
+			SettingKeyGatewayAuditIndexEnabled,
 			SettingKeyGatewayAuditIndexAsyncEnabled,
 			SettingKeyGatewayAuditIndexQueueSize,
 			SettingKeyGatewayAuditIndexWorkerCount,
@@ -2963,6 +3020,7 @@ func (s *SettingService) GetGatewayAuditConfig(ctx context.Context) config.Gatew
 			s.gatewayAuditConfigCache.Store(&cachedGatewayAuditConfig{
 				cfg:       base,
 				expiresAt: time.Now().Add(gatewayAuditConfigErrorTTL).UnixNano(),
+				version:   versionAtStart,
 			})
 			return base, nil
 		}
@@ -2970,6 +3028,7 @@ func (s *SettingService) GetGatewayAuditConfig(ctx context.Context) config.Gatew
 		s.gatewayAuditConfigCache.Store(&cachedGatewayAuditConfig{
 			cfg:       merged,
 			expiresAt: time.Now().Add(gatewayAuditConfigCacheTTL).UnixNano(),
+			version:   versionAtStart,
 		})
 		return merged, nil
 	})
@@ -3348,6 +3407,18 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	if s != nil && s.cfg != nil {
 		gatewayAuditCfg = s.cfg.Gateway.Audit
 	}
+	gatewayAuditMaxInputBodyBytes := normalizeGatewayAuditBodyLimit(
+		gatewayAuditCfg.MaxInputBodyBytes,
+		gatewayAuditCfg.InputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	gatewayAuditMaxOutputBodyBytes := normalizeGatewayAuditBodyLimit(
+		gatewayAuditCfg.MaxOutputBodyBytes,
+		gatewayAuditCfg.OutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
 	gatewayAuditIncludePathsJSON, err := json.Marshal(gatewayAuditCfg.IncludePaths)
 	if err != nil {
 		return err
@@ -3527,6 +3598,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyGatewayAuditFileEnabled:                     strconv.FormatBool(gatewayAuditCfg.FileEnabled),
 		SettingKeyGatewayAuditFilePath:                        strings.TrimSpace(gatewayAuditCfg.FilePath),
 		SettingKeyGatewayAuditOpsIndexEnabled:                 strconv.FormatBool(gatewayAuditCfg.OpsIndexEnabled),
+		SettingKeyGatewayAuditIndexEnabled:                    strconv.FormatBool(gatewayAuditCfg.IndexEnabled),
 		SettingKeyGatewayAuditIndexAsyncEnabled:               strconv.FormatBool(gatewayAuditCfg.IndexAsyncEnabled),
 		SettingKeyGatewayAuditIndexQueueSize:                  strconv.Itoa(gatewayAuditCfg.IndexQueueSize),
 		SettingKeyGatewayAuditIndexWorkerCount:                strconv.Itoa(gatewayAuditCfg.IndexWorkerCount),
@@ -3537,8 +3609,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyGatewayAuditBackfillIntervalMs:              strconv.Itoa(gatewayAuditCfg.BackfillIntervalMs),
 		SettingKeyGatewayAuditBackfillBatchSize:               strconv.Itoa(gatewayAuditCfg.BackfillBatchSize),
 		SettingKeyGatewayAuditRetentionCleanupIntervalMinutes: strconv.Itoa(gatewayAuditCfg.RetentionCleanupIntervalMinutes),
-		SettingKeyGatewayAuditMaxInputBodyBytes:               strconv.FormatInt(gatewayAuditCfg.MaxInputBodyBytes, 10),
-		SettingKeyGatewayAuditMaxOutputBodyBytes:              strconv.FormatInt(gatewayAuditCfg.MaxOutputBodyBytes, 10),
+		SettingKeyGatewayAuditMaxInputBodyBytes:               strconv.FormatInt(gatewayAuditMaxInputBodyBytes, 10),
+		SettingKeyGatewayAuditMaxOutputBodyBytes:              strconv.FormatInt(gatewayAuditMaxOutputBodyBytes, 10),
 		SettingKeyGatewayAuditMaxStringValueBytes:             strconv.Itoa(gatewayAuditCfg.MaxStringValueBytes),
 		SettingKeyGatewayAuditMaxArrayItems:                   strconv.Itoa(gatewayAuditCfg.MaxArrayItems),
 		SettingKeyGatewayAuditMaxObjectDepth:                  strconv.Itoa(gatewayAuditCfg.MaxObjectDepth),
@@ -4075,6 +4147,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.GatewayAuditFileEnabled = auditCfg.FileEnabled
 	result.GatewayAuditFilePath = auditCfg.FilePath
 	result.GatewayAuditOpsIndexEnabled = auditCfg.OpsIndexEnabled
+	result.GatewayAuditIndexEnabled = auditCfg.IndexEnabled
 	result.GatewayAuditIndexAsyncEnabled = auditCfg.IndexAsyncEnabled
 	result.GatewayAuditIndexQueueSize = auditCfg.IndexQueueSize
 	result.GatewayAuditIndexWorkerCount = auditCfg.IndexWorkerCount

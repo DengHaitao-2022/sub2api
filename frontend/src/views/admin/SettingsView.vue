@@ -4181,6 +4181,12 @@
                         />
                       </div>
                     </div>
+                    <div
+                      v-if="gatewayAuditFullCaptureSelected"
+                      class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.gatewayAuditFullCaptureWarning") }}
+                    </div>
                   </div>
 
                   <div>
@@ -4197,11 +4203,20 @@
                         <Toggle v-model="form.gateway_audit_ops_index_enabled" />
                       </div>
                       <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.gatewayAuditIndexEnabled") }}</span>
+                        <Toggle v-model="form.gateway_audit_index_enabled" />
+                      </div>
+                      <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
                         <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.gatewayAuditIndexAsyncEnabled") }}</span>
                         <Toggle v-model="form.gateway_audit_index_async_enabled" />
                       </div>
                       <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
-                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.gatewayAuditBackfillEnabled") }}</span>
+                        <span class="text-sm text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditBackfillEnabled") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </span>
                         <Toggle v-model="form.gateway_audit_backfill_enabled" />
                       </div>
                     </div>
@@ -4210,6 +4225,9 @@
                       <div class="xl:col-span-3">
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditFilePath") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input
                           v-model="form.gateway_audit_file_path"
@@ -4221,48 +4239,72 @@
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexQueueSize") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input v-model.number="form.gateway_audit_index_queue_size" type="number" min="0" class="input" />
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexWorkerCount") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input v-model.number="form.gateway_audit_index_worker_count" type="number" min="0" class="input" />
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexBatchSize") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input v-model.number="form.gateway_audit_index_batch_size" type="number" min="0" class="input" />
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexFlushIntervalMs") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input v-model.number="form.gateway_audit_index_flush_interval_ms" type="number" min="0" class="input" />
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexWriteTimeoutMs") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input v-model.number="form.gateway_audit_index_write_timeout_ms" type="number" min="0" class="input" />
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditBackfillIntervalMs") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input v-model.number="form.gateway_audit_backfill_interval_ms" type="number" min="0" class="input" />
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditBackfillBatchSize") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input v-model.number="form.gateway_audit_backfill_batch_size" type="number" min="0" class="input" />
                       </div>
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditRetentionCleanupIntervalMinutes") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
                         </label>
                         <input
                           v-model.number="form.gateway_audit_retention_cleanup_interval_minutes"
@@ -8388,6 +8430,7 @@ const form = reactive<SettingsForm>({
   gateway_audit_file_enabled: true,
   gateway_audit_file_path: "/app/data/audit/audit.jsonl",
   gateway_audit_ops_index_enabled: true,
+  gateway_audit_index_enabled: true,
   gateway_audit_index_async_enabled: true,
   gateway_audit_index_queue_size: 10000,
   gateway_audit_index_worker_count: 2,
@@ -9077,6 +9120,12 @@ const gatewayAuditCaptureModeOptions = computed(() => [
   { value: "full", label: t("admin.settings.gatewayForwarding.auditCaptureFull") },
 ]);
 
+const gatewayAuditFullCaptureSelected = computed(
+  () =>
+    form.gateway_audit_input_capture_mode === "full" ||
+    form.gateway_audit_output_capture_mode === "full",
+);
+
 const gatewayAuditIncludePathsText = computed({
   get: () => formatLineSeparatedAuditList(form.gateway_audit_include_paths),
   set: (value: string) => {
@@ -9714,6 +9763,7 @@ async function saveSettings() {
       gateway_audit_file_enabled: form.gateway_audit_file_enabled,
       gateway_audit_file_path: form.gateway_audit_file_path?.trim() || "",
       gateway_audit_ops_index_enabled: form.gateway_audit_ops_index_enabled,
+      gateway_audit_index_enabled: form.gateway_audit_index_enabled,
       gateway_audit_index_async_enabled:
         form.gateway_audit_index_async_enabled,
       gateway_audit_index_queue_size:

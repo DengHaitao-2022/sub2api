@@ -13,13 +13,13 @@ const (
 )
 
 type MetricsSnapshot struct {
-	JSONLWriteFailedTotal int64
-	IndexQueueSize        int64
-	IndexQueueFullTotal   int64
-	IndexBatchFlushTotal  int64
-	IndexBatchFailedTotal int64
-	BackfillLagSeconds    int64
-	BackfillIndexedTotal  int64
+	JSONLWriteFailedTotal int64 `json:"audit_jsonl_write_failed_total"`
+	IndexQueueSize        int64 `json:"audit_index_queue_size"`
+	IndexQueueFullTotal   int64 `json:"audit_index_queue_full_total"`
+	IndexBatchFlushTotal  int64 `json:"audit_index_batch_flush_total"`
+	IndexBatchFailedTotal int64 `json:"audit_index_batch_failed_total"`
+	BackfillLagSeconds    int64 `json:"audit_backfill_lag_seconds"`
+	BackfillIndexedTotal  int64 `json:"audit_backfill_indexed_total"`
 }
 
 var metrics auditMetrics

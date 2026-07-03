@@ -61,7 +61,7 @@ func NewBackfillScanner(cfg config.GatewayAuditConfig, repo BackfillRepository) 
 }
 
 func (s *BackfillScanner) Start() {
-	if s == nil || s.repo == nil || !s.cfg.BackfillEnabled || !s.cfg.FileEnabled {
+	if s == nil || s.repo == nil || !s.cfg.Enabled || !s.cfg.IndexEnabled || !s.cfg.BackfillEnabled || !s.cfg.FileEnabled {
 		return
 	}
 	s.wg.Add(1)

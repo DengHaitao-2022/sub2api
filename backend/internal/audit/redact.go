@@ -43,10 +43,7 @@ func BuildBodyRecord(raw []byte, contentType string, mode string, cfg config.Gat
 		return record
 	}
 
-	maxBytes := cfg.MaxInputBodyBytes
-	if output {
-		maxBytes = cfg.MaxOutputBodyBytes
-	}
+	maxBytes := bodyCaptureLimit(cfg, mode, output)
 	captured := raw
 	if maxBytes > 0 && int64(len(captured)) > maxBytes {
 		captured = captured[:maxBytes]
@@ -55,6 +52,28 @@ func BuildBodyRecord(raw []byte, contentType string, mode string, cfg config.Gat
 
 	record.Body = redactedBody(captured, cfg, mode == captureModeFull)
 	return record
+}
+
+func bodyCaptureLimit(cfg config.GatewayAuditConfig, mode string, output bool) int64 {
+	var value int64
+	var fallback int64
+	var fullMax int64
+	if output {
+		value = cfg.MaxOutputBodyBytes
+		fallback = config.DefaultGatewayAuditMaxOutputBodyBytes
+		fullMax = config.MaxGatewayAuditFullOutputBodyBytes
+	} else {
+		value = cfg.MaxInputBodyBytes
+		fallback = config.DefaultGatewayAuditMaxInputBodyBytes
+		fullMax = config.MaxGatewayAuditFullInputBodyBytes
+	}
+	if value <= 0 {
+		value = fallback
+	}
+	if normalizeCaptureMode(mode) == captureModeFull && fullMax > 0 && value > fullMax {
+		return fullMax
+	}
+	return value
 }
 
 func redactedBody(raw []byte, cfg config.GatewayAuditConfig, preserveFull bool) any {

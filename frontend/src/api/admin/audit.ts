@@ -146,6 +146,35 @@ export interface GatewayAuditHealth {
   last_jsonl_file_path?: string
   last_jsonl_file_exists: boolean
   last_jsonl_file_size?: number
+  metrics?: {
+    audit_jsonl_write_failed_total: number
+    audit_index_queue_size: number
+    audit_index_queue_full_total: number
+    audit_index_batch_flush_total: number
+    audit_index_batch_failed_total: number
+    audit_backfill_lag_seconds: number
+    audit_backfill_indexed_total: number
+  }
+  runtime?: {
+    started: boolean
+    enabled: boolean
+    index_enabled: boolean
+    index_async_enabled: boolean
+    dispatcher_enabled: boolean
+    worker_enabled: boolean
+    backfill_enabled: boolean
+    retention_enabled: boolean
+    file_path?: string
+    worker_count: number
+    queue_capacity: number
+    queue_size: number
+    batch_size: number
+    flush_interval_ms: number
+    write_timeout_ms: number
+    backfill_interval_ms: number
+    backfill_batch_size: number
+    retention_cleanup_interval_minutes: number
+  }
 }
 
 export interface GatewayAuditAccessLog {

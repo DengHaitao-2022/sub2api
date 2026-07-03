@@ -444,6 +444,7 @@ const (
 	SettingKeyGatewayAuditFileEnabled                     = "gateway_audit_file_enabled"
 	SettingKeyGatewayAuditFilePath                        = "gateway_audit_file_path"
 	SettingKeyGatewayAuditOpsIndexEnabled                 = "gateway_audit_ops_index_enabled"
+	SettingKeyGatewayAuditIndexEnabled                    = "gateway_audit_index_enabled"
 	SettingKeyGatewayAuditIndexAsyncEnabled               = "gateway_audit_index_async_enabled"
 	SettingKeyGatewayAuditIndexQueueSize                  = "gateway_audit_index_queue_size"
 	SettingKeyGatewayAuditIndexWorkerCount                = "gateway_audit_index_worker_count"

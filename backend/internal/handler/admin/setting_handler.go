@@ -287,6 +287,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		GatewayAuditFileEnabled:                     settings.GatewayAuditFileEnabled,
 		GatewayAuditFilePath:                        settings.GatewayAuditFilePath,
 		GatewayAuditOpsIndexEnabled:                 settings.GatewayAuditOpsIndexEnabled,
+		GatewayAuditIndexEnabled:                    settings.GatewayAuditIndexEnabled,
 		GatewayAuditIndexAsyncEnabled:               settings.GatewayAuditIndexAsyncEnabled,
 		GatewayAuditIndexQueueSize:                  settings.GatewayAuditIndexQueueSize,
 		GatewayAuditIndexWorkerCount:                settings.GatewayAuditIndexWorkerCount,
@@ -653,6 +654,7 @@ type UpdateSettingsRequest struct {
 	GatewayAuditFileEnabled                     *bool     `json:"gateway_audit_file_enabled"`
 	GatewayAuditFilePath                        *string   `json:"gateway_audit_file_path"`
 	GatewayAuditOpsIndexEnabled                 *bool     `json:"gateway_audit_ops_index_enabled"`
+	GatewayAuditIndexEnabled                    *bool     `json:"gateway_audit_index_enabled"`
 	GatewayAuditIndexAsyncEnabled               *bool     `json:"gateway_audit_index_async_enabled"`
 	GatewayAuditIndexQueueSize                  *int      `json:"gateway_audit_index_queue_size"`
 	GatewayAuditIndexWorkerCount                *int      `json:"gateway_audit_index_worker_count"`
@@ -1803,6 +1805,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.GatewayAuditOpsIndexEnabled
 		}(),
+		GatewayAuditIndexEnabled: func() bool {
+			if req.GatewayAuditIndexEnabled != nil {
+				return *req.GatewayAuditIndexEnabled
+			}
+			return previousSettings.GatewayAuditIndexEnabled
+		}(),
 		GatewayAuditIndexAsyncEnabled: func() bool {
 			if req.GatewayAuditIndexAsyncEnabled != nil {
 				return *req.GatewayAuditIndexAsyncEnabled
@@ -2387,6 +2395,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GatewayAuditFileEnabled:                     updatedSettings.GatewayAuditFileEnabled,
 		GatewayAuditFilePath:                        updatedSettings.GatewayAuditFilePath,
 		GatewayAuditOpsIndexEnabled:                 updatedSettings.GatewayAuditOpsIndexEnabled,
+		GatewayAuditIndexEnabled:                    updatedSettings.GatewayAuditIndexEnabled,
 		GatewayAuditIndexAsyncEnabled:               updatedSettings.GatewayAuditIndexAsyncEnabled,
 		GatewayAuditIndexQueueSize:                  updatedSettings.GatewayAuditIndexQueueSize,
 		GatewayAuditIndexWorkerCount:                updatedSettings.GatewayAuditIndexWorkerCount,
@@ -2910,6 +2919,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.GatewayAuditOpsIndexEnabled != after.GatewayAuditOpsIndexEnabled {
 		changed = append(changed, "gateway_audit_ops_index_enabled")
+	}
+	if before.GatewayAuditIndexEnabled != after.GatewayAuditIndexEnabled {
+		changed = append(changed, "gateway_audit_index_enabled")
 	}
 	if before.GatewayAuditIndexAsyncEnabled != after.GatewayAuditIndexAsyncEnabled {
 		changed = append(changed, "gateway_audit_index_async_enabled")

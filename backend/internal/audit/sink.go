@@ -1,9 +1,11 @@
 package audit
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,7 +18,13 @@ import (
 	"go.uber.org/zap"
 )
 
-var fileWriteMu sync.Mutex
+const (
+	defaultJSONLBufferSize    = 256 * 1024
+	defaultJSONLFlushInterval = time.Second
+	defaultJSONLSyncInterval  = 5 * time.Second
+)
+
+var jsonlWriters = newJSONLWriterManager(defaultJSONLBufferSize, defaultJSONLFlushInterval, defaultJSONLSyncInterval)
 
 type JSONLWriteResult struct {
 	FilePath   string
@@ -64,6 +72,10 @@ type RetentionCleaner interface {
 	CleanupAuditRetention(ctx context.Context, cutoff time.Time) error
 }
 
+type SyncIndexWriter interface {
+	InsertAuditIndex(ctx context.Context, record *IndexRecord) error
+}
+
 func WriteEvent(ctx context.Context, cfg config.GatewayAuditConfig, event *Event) (*JSONLWriteResult, error) {
 	if event == nil {
 		return nil, nil
@@ -90,19 +102,85 @@ func WriteEvent(ctx context.Context, cfg config.GatewayAuditConfig, event *Event
 	if cfg.OpsIndexEnabled {
 		writeOpsIndex(event)
 	}
-	if cfg.IndexAsyncEnabled {
+	if cfg.IndexEnabled {
 		record := buildIndexRecord(cfg, event, result)
-		if dispatcher := CurrentDispatcher(); dispatcher != nil {
-			dispatcher.Enqueue(ctx, IndexJob{Record: record})
+		if cfg.IndexAsyncEnabled {
+			enqueueIndexJob(ctx, record)
 		} else {
-			logger.FromContext(ctx).Warn("gateway.audit.index_dispatcher_unavailable",
-				zap.String("audit_id", record.AuditID),
-				zap.String("file_path", record.FilePath),
-				zap.Int64("file_offset", record.FileOffset),
-			)
+			writeSyncIndex(ctx, cfg, record)
 		}
 	}
 	return result, nil
+}
+
+func enqueueIndexJob(ctx context.Context, record *IndexRecord) {
+	if record == nil {
+		return
+	}
+	if dispatcher := CurrentDispatcher(); dispatcher != nil {
+		dispatcher.Enqueue(ctx, IndexJob{Record: record})
+	} else {
+		logger.FromContext(ctx).Warn("gateway.audit.index_dispatcher_unavailable",
+			zap.String("audit_id", record.AuditID),
+			zap.String("file_path", record.FilePath),
+			zap.Int64("file_offset", record.FileOffset),
+		)
+	}
+}
+
+func writeSyncIndex(ctx context.Context, cfg config.GatewayAuditConfig, record *IndexRecord) {
+	if record == nil {
+		return
+	}
+	writer := CurrentIndexWriter()
+	if writer == nil {
+		logger.FromContext(ctx).Warn("gateway.audit.index_writer_unavailable",
+			zap.String("audit_id", record.AuditID),
+			zap.String("file_path", record.FilePath),
+			zap.Int64("file_offset", record.FileOffset),
+		)
+		return
+	}
+	timeout := durationFromMs(cfg.IndexTimeoutMs)
+	if timeout <= 0 {
+		timeout = durationFromMs(cfg.IndexWriteTimeoutMs)
+	}
+	if timeout <= 0 {
+		timeout = defaultIndexWriteTimeout
+	}
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	defer cancel()
+	if err := writer.InsertAuditIndex(writeCtx, record); err != nil {
+		logger.FromContext(ctx).Warn("gateway.audit.index_sync_failed",
+			zap.Error(err),
+			zap.String("audit_id", record.AuditID),
+			zap.String("file_path", record.FilePath),
+			zap.Int64("file_offset", record.FileOffset),
+		)
+		logger.WriteSinkEvent("warn", "gateway.audit", "gateway.audit.index_sync_failed", map[string]any{
+			"audit_id":    record.AuditID,
+			"file_path":   record.FilePath,
+			"file_offset": record.FileOffset,
+			"error":       err.Error(),
+		})
+	}
+}
+
+var indexWriterState = struct {
+	sync.RWMutex
+	writer SyncIndexWriter
+}{}
+
+func CurrentIndexWriter() SyncIndexWriter {
+	indexWriterState.RLock()
+	defer indexWriterState.RUnlock()
+	return indexWriterState.writer
+}
+
+func SetIndexWriter(writer SyncIndexWriter) {
+	indexWriterState.Lock()
+	defer indexWriterState.Unlock()
+	indexWriterState.writer = writer
 }
 
 func writeJSONL(path string, event *Event) (*JSONLWriteResult, error) {
@@ -116,29 +194,142 @@ func writeJSONL(path string, event *Event) (*JSONLWriteResult, error) {
 		return nil, err
 	}
 	line = append(line, '\n')
+	return jsonlWriters.Write(path, line)
+}
 
-	fileWriteMu.Lock()
-	defer fileWriteMu.Unlock()
+type jsonlWriterManager struct {
+	mu            sync.Mutex
+	current       *jsonlFileWriter
+	bufferSize    int
+	flushInterval time.Duration
+	syncInterval  time.Duration
+}
 
+type jsonlFileWriter struct {
+	path       string
+	file       *os.File
+	writer     *bufio.Writer
+	nextOffset int64
+	lastFlush  time.Time
+	lastSync   time.Time
+}
+
+func newJSONLWriterManager(bufferSize int, flushInterval, syncInterval time.Duration) *jsonlWriterManager {
+	if bufferSize <= 0 {
+		bufferSize = defaultJSONLBufferSize
+	}
+	if flushInterval <= 0 {
+		flushInterval = defaultJSONLFlushInterval
+	}
+	if syncInterval <= 0 {
+		syncInterval = defaultJSONLSyncInterval
+	}
+	return &jsonlWriterManager{
+		bufferSize:    bufferSize,
+		flushInterval: flushInterval,
+		syncInterval:  syncInterval,
+	}
+}
+
+func (m *jsonlWriterManager) Write(path string, line []byte) (*JSONLWriteResult, error) {
+	if m == nil {
+		return nil, errors.New("audit jsonl writer unavailable")
+	}
+	if len(line) == 0 {
+		return &JSONLWriteResult{FilePath: path}, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if err := m.rotateLocked(path); err != nil {
+		return nil, err
+	}
+	if m.current == nil || m.current.writer == nil {
+		return nil, errors.New("audit jsonl writer not open")
+	}
+	offset := m.current.nextOffset
+	n, err := m.current.writer.Write(line)
+	m.current.nextOffset += int64(n)
+	if err != nil {
+		return nil, err
+	}
+	if n != len(line) {
+		return nil, io.ErrShortWrite
+	}
+	if err := m.flushLocked(time.Now(), true); err != nil {
+		return nil, err
+	}
+	return &JSONLWriteResult{FilePath: path, FileOffset: offset, LineBytes: int64(len(line))}, nil
+}
+
+func (m *jsonlWriterManager) rotateLocked(path string) error {
+	if m.current != nil && m.current.path == path {
+		return nil
+	}
+	if err := m.closeCurrentLocked(); err != nil {
+		return err
+	}
 	if dir := filepath.Dir(path); dir != "." && dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		_ = f.Close()
+		return err
 	}
-	offset := info.Size()
-	if _, err = f.Write(line); err != nil {
-		return nil, err
+	now := time.Now()
+	m.current = &jsonlFileWriter{
+		path:       path,
+		file:       f,
+		writer:     bufio.NewWriterSize(f, m.bufferSize),
+		nextOffset: info.Size(),
+		lastFlush:  now,
+		lastSync:   now,
 	}
-	return &JSONLWriteResult{FilePath: path, FileOffset: offset, LineBytes: int64(len(line))}, nil
+	return nil
+}
+
+func (m *jsonlWriterManager) flushLocked(now time.Time, force bool) error {
+	if m.current == nil || m.current.writer == nil {
+		return nil
+	}
+	if force || now.Sub(m.current.lastFlush) >= m.flushInterval {
+		if err := m.current.writer.Flush(); err != nil {
+			return err
+		}
+		m.current.lastFlush = now
+	}
+	if m.current.file != nil && now.Sub(m.current.lastSync) >= m.syncInterval {
+		if err := m.current.file.Sync(); err != nil {
+			return err
+		}
+		m.current.lastSync = now
+	}
+	return nil
+}
+
+func (m *jsonlWriterManager) closeCurrentLocked() error {
+	if m.current == nil {
+		return nil
+	}
+	var err error
+	if m.current.writer != nil {
+		err = m.current.writer.Flush()
+	}
+	if syncErr := m.current.file.Sync(); err == nil {
+		err = syncErr
+	}
+	if closeErr := m.current.file.Close(); err == nil {
+		err = closeErr
+	}
+	m.current = nil
+	return err
 }
 
 func cleanupJSONL(path string, cutoff time.Time) error {

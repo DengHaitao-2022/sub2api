@@ -195,7 +195,8 @@ type SystemSettings struct {
 	GatewayAuditOutputCaptureMode               string   // 输出采集模式：none/hash/preview/full
 	GatewayAuditFileEnabled                     bool     // 是否写入 JSONL/WAL
 	GatewayAuditFilePath                        string   // JSONL/WAL 文件路径
-	GatewayAuditOpsIndexEnabled                 bool     // 是否维护 PostgreSQL 查询索引
+	GatewayAuditOpsIndexEnabled                 bool     // 是否写入 ops 审计日志
+	GatewayAuditIndexEnabled                    bool     // 是否写入 PostgreSQL 查询索引
 	GatewayAuditIndexAsyncEnabled               bool     // 是否启用异步索引 worker
 	GatewayAuditIndexQueueSize                  int      // 异步索引队列大小
 	GatewayAuditIndexWorkerCount                int      // 异步索引 worker 数量
