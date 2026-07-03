@@ -53,11 +53,11 @@ func BuildBodyRecord(raw []byte, contentType string, mode string, cfg config.Gat
 		record.Truncated = true
 	}
 
-	record.Body = redactedBody(captured, cfg)
+	record.Body = redactedBody(captured, cfg, mode == captureModeFull)
 	return record
 }
 
-func redactedBody(raw []byte, cfg config.GatewayAuditConfig) any {
+func redactedBody(raw []byte, cfg config.GatewayAuditConfig, preserveFull bool) any {
 	if len(raw) == 0 {
 		return ""
 	}
@@ -65,11 +65,20 @@ func redactedBody(raw []byte, cfg config.GatewayAuditConfig) any {
 		redacted := logredact.RedactJSON(raw, cfg.RedactKeys...)
 		var value any
 		if err := json.Unmarshal([]byte(redacted), &value); err == nil {
+			if preserveFull {
+				return value
+			}
 			return limitValue(value, normalizeLimits(cfg), 0)
+		}
+		if preserveFull {
+			return redacted
 		}
 		return truncateUTF8(redacted, cfg.MaxStringValueBytes)
 	}
 	text := logredact.RedactText(string(raw), cfg.RedactKeys...)
+	if preserveFull {
+		return text
+	}
 	return truncateUTF8(text, cfg.MaxStringValueBytes)
 }
 

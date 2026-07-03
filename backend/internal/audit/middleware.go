@@ -23,24 +23,37 @@ import (
 const opsTimeToFirstTokenMsKey = "ops_time_to_first_token_ms"
 
 type GatewayAuditEnabledFunc func(context.Context) bool
+type GatewayAuditConfigFunc func(context.Context) config.GatewayAuditConfig
 
 func GatewayAuditMiddleware(cfg config.GatewayAuditConfig, enabledCheck ...GatewayAuditEnabledFunc) gin.HandlerFunc {
+	return GatewayAuditMiddlewareWithConfigProvider(cfg, nil, enabledCheck...)
+}
+
+func GatewayAuditMiddlewareWithConfigProvider(
+	cfg config.GatewayAuditConfig,
+	cfgProvider GatewayAuditConfigFunc,
+	enabledCheck ...GatewayAuditEnabledFunc,
+) gin.HandlerFunc {
 	cfg = normalizeConfig(cfg)
 	return func(c *gin.Context) {
 		if c == nil {
 			return
 		}
-		if c.Request == nil || !gatewayAuditEnabled(c.Request.Context(), cfg, enabledCheck...) || !shouldCapture(c, cfg) {
+		effectiveCfg := cfg
+		if cfgProvider != nil && c.Request != nil {
+			effectiveCfg = normalizeConfig(cfgProvider(c.Request.Context()))
+		}
+		if c.Request == nil || !gatewayAuditEnabled(c.Request.Context(), effectiveCfg, enabledCheck...) || !shouldCapture(c, effectiveCfg) {
 			c.Next()
 			return
 		}
 
 		started := time.Now()
-		auditCtx := newContext(cfg, started)
+		auditCtx := newContext(effectiveCfg, started)
 		Attach(c, auditCtx)
 
 		previousWriter := c.Writer
-		writer := NewResponseWriter(previousWriter, outputCaptureBytes(cfg))
+		writer := NewResponseWriter(previousWriter, outputCaptureBytes(effectiveCfg))
 		c.Writer = writer
 		defer func() {
 			c.Writer = previousWriter
@@ -49,7 +62,7 @@ func GatewayAuditMiddleware(cfg config.GatewayAuditConfig, enabledCheck ...Gatew
 		c.Next()
 
 		event := buildFinalEvent(c, auditCtx, writer, time.Since(started))
-		if _, err := WriteEvent(c.Request.Context(), cfg, event); err != nil {
+		if _, err := WriteEvent(c.Request.Context(), effectiveCfg, event); err != nil {
 			logger.FromContext(c.Request.Context()).Warn("gateway.audit.write_failed", zap.Error(err))
 		}
 	}
@@ -206,7 +219,7 @@ func buildOutputRecord(writer *ResponseWriter, contentType string, cfg config.Ga
 	if isBinaryLikeOutput(contentType, preview) {
 		return record
 	}
-	record.Body = redactedBody(preview, cfg)
+	record.Body = redactedBody(preview, cfg, mode == captureModeFull)
 	return record
 }
 

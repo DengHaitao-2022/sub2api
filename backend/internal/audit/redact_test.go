@@ -53,3 +53,37 @@ func TestBuildBodyRecordHashModeOmitsBody(t *testing.T) {
 		t.Fatalf("hash mode should omit body, got %#v", record.Body)
 	}
 }
+
+func TestBuildBodyRecordFullModePreservesStructuredBody(t *testing.T) {
+	body := []byte(`{"message":"1234567890","items":[{"content":"first"},{"content":"second"},{"content":"third"}],"secret":"keep-redacted"}`)
+	cfg := config.GatewayAuditConfig{
+		InputCaptureMode:    "full",
+		MaxInputBodyBytes:   1024,
+		MaxStringValueBytes: 4,
+		MaxArrayItems:       1,
+		MaxObjectDepth:      1,
+		RedactKeys:          []string{"secret"},
+	}
+
+	record := BuildBodyRecord(body, "application/json", "full", cfg, false)
+	if record == nil {
+		t.Fatal("expected full record")
+	}
+	obj, ok := record.Body.(map[string]any)
+	if !ok {
+		t.Fatalf("expected structured JSON body, got %T", record.Body)
+	}
+	if got := obj["message"]; got != "1234567890" {
+		t.Fatalf("full mode should preserve full string value, got %#v", got)
+	}
+	items, ok := obj["items"].([]any)
+	if !ok {
+		t.Fatalf("expected items array, got %T", obj["items"])
+	}
+	if len(items) != 3 {
+		t.Fatalf("full mode should preserve full array length, got %d", len(items))
+	}
+	if got := obj["secret"]; got != "***" {
+		t.Fatalf("redaction must still apply in full mode, got %#v", got)
+	}
+}

@@ -376,6 +376,31 @@ const baseSettingsResponse = {
   max_claude_code_version: "",
   allow_ungrouped_key_scheduling: false,
   gateway_audit_enabled: false,
+  gateway_audit_input_capture_mode: "preview",
+  gateway_audit_output_capture_mode: "preview",
+  gateway_audit_file_enabled: true,
+  gateway_audit_file_path: "/app/data/audit/audit.jsonl",
+  gateway_audit_ops_index_enabled: true,
+  gateway_audit_index_async_enabled: true,
+  gateway_audit_index_queue_size: 10000,
+  gateway_audit_index_worker_count: 2,
+  gateway_audit_index_batch_size: 200,
+  gateway_audit_index_flush_interval_ms: 200,
+  gateway_audit_index_write_timeout_ms: 2000,
+  gateway_audit_backfill_enabled: true,
+  gateway_audit_backfill_interval_ms: 30000,
+  gateway_audit_backfill_batch_size: 500,
+  gateway_audit_retention_cleanup_interval_minutes: 60,
+  gateway_audit_max_input_body_bytes: 65536,
+  gateway_audit_max_output_body_bytes: 131072,
+  gateway_audit_max_string_value_bytes: 8192,
+  gateway_audit_max_array_items: 50,
+  gateway_audit_max_object_depth: 16,
+  gateway_audit_sample_rate: 1,
+  gateway_audit_include_paths: ["/v1/messages"],
+  gateway_audit_exclude_paths: ["/health"],
+  gateway_audit_redact_keys: ["authorization"],
+  gateway_audit_retention_days: 3,
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -627,10 +652,14 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
-  it("submits gateway audit setting", async () => {
+  it("submits gateway audit settings", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       gateway_audit_enabled: true,
+      gateway_audit_input_capture_mode: "full",
+      gateway_audit_output_capture_mode: "hash",
+      gateway_audit_sample_rate: 0.5,
+      gateway_audit_include_paths: ["/v1/messages", "/v1/responses"],
     });
 
     const wrapper = mountView();
@@ -643,6 +672,10 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         gateway_audit_enabled: true,
+        gateway_audit_input_capture_mode: "full",
+        gateway_audit_output_capture_mode: "hash",
+        gateway_audit_sample_rate: 0.5,
+        gateway_audit_include_paths: ["/v1/messages", "/v1/responses"],
       }),
     );
   });

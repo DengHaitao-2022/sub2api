@@ -41,11 +41,15 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
 }
 
-func ProvideGatewayAuditRuntime(repo GatewayAuditRepository, cfg *config.Config) *audit.Runtime {
+func ProvideGatewayAuditRuntime(repo GatewayAuditRepository, cfg *config.Config, settingService *SettingService) *audit.Runtime {
 	if cfg == nil || repo == nil {
 		return nil
 	}
-	rt := audit.NewRuntime(cfg.Gateway.Audit, repo)
+	auditCfg := cfg.Gateway.Audit
+	if settingService != nil {
+		auditCfg = settingService.GetGatewayAuditConfig(context.Background())
+	}
+	rt := audit.NewRuntime(auditCfg, repo)
 	rt.Start()
 	return rt
 }

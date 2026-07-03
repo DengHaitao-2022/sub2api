@@ -102,9 +102,9 @@ type GatewayAuditIndex struct {
 	FinalUpstreamStatusCode int       `json:"final_upstream_status_code,omitempty"`
 	CaptureMode             string    `json:"capture_mode,omitempty"`
 	Sampled                 bool      `json:"sampled"`
-	FilePath                string    `json:"-"`
-	FileOffset              int64     `json:"-"`
-	LineBytes               int64     `json:"-"`
+	FilePath                string    `json:"file_path,omitempty"`
+	FileOffset              int64     `json:"file_offset,omitempty"`
+	LineBytes               int64     `json:"line_bytes,omitempty"`
 	CreatedAt               time.Time `json:"created_at"`
 }
 

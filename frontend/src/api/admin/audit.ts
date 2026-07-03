@@ -25,8 +25,15 @@ export interface GatewayAuditIndex {
   output_truncated: boolean
   duration_ms: number
   time_to_first_token_ms: number
+  attempt_count: number
+  has_failover: boolean
+  first_upstream_status_code?: number
+  final_upstream_status_code?: number
   capture_mode?: string
   sampled: boolean
+  file_path?: string
+  file_offset?: number
+  line_bytes?: number
   created_at: string
 }
 
