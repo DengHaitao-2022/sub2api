@@ -732,6 +732,8 @@ type GatewayConfig struct {
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// Audit: 网关请求/响应审计日志配置（默认关闭）
+	Audit GatewayAuditConfig `mapstructure:"audit"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -806,6 +808,57 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+}
+
+const (
+	DefaultGatewayAuditMaxInputBodyBytes  int64 = 64 * 1024
+	DefaultGatewayAuditMaxOutputBodyBytes int64 = 128 * 1024
+	MaxGatewayAuditFullInputBodyBytes     int64 = 1024 * 1024
+	MaxGatewayAuditFullOutputBodyBytes    int64 = 2 * 1024 * 1024
+)
+
+type GatewayAuditConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+
+	// none / hash / preview / full
+	InputCaptureMode  string `mapstructure:"input_capture_mode"`
+	OutputCaptureMode string `mapstructure:"output_capture_mode"`
+
+	FileEnabled bool   `mapstructure:"file_enabled"`
+	FilePath    string `mapstructure:"file_path"`
+
+	OpsIndexEnabled bool `mapstructure:"ops_index_enabled"`
+	IndexTimeoutMs  int  `mapstructure:"index_timeout_ms"`
+
+	IndexEnabled         bool `mapstructure:"index_enabled"`
+	IndexAsyncEnabled    bool `mapstructure:"index_async_enabled"`
+	IndexQueueSize       int  `mapstructure:"index_queue_size"`
+	IndexWorkerCount     int  `mapstructure:"index_worker_count"`
+	IndexBatchSize       int  `mapstructure:"index_batch_size"`
+	IndexFlushIntervalMs int  `mapstructure:"index_flush_interval_ms"`
+	IndexWriteTimeoutMs  int  `mapstructure:"index_write_timeout_ms"`
+
+	BackfillEnabled    bool `mapstructure:"backfill_enabled"`
+	BackfillIntervalMs int  `mapstructure:"backfill_interval_ms"`
+	BackfillBatchSize  int  `mapstructure:"backfill_batch_size"`
+
+	RetentionCleanupIntervalMinutes int `mapstructure:"retention_cleanup_interval_minutes"`
+
+	MaxInputBodyBytes  int64 `mapstructure:"max_input_body_bytes"`
+	MaxOutputBodyBytes int64 `mapstructure:"max_output_body_bytes"`
+
+	MaxStringValueBytes int `mapstructure:"max_string_value_bytes"`
+	MaxArrayItems       int `mapstructure:"max_array_items"`
+	MaxObjectDepth      int `mapstructure:"max_object_depth"`
+
+	SampleRate float64 `mapstructure:"sample_rate"`
+
+	IncludePaths []string `mapstructure:"include_paths"`
+	ExcludePaths []string `mapstructure:"exclude_paths"`
+
+	RedactKeys []string `mapstructure:"redact_keys"`
+
+	RetentionDays int `mapstructure:"retention_days"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -1902,6 +1955,66 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
+	viper.SetDefault("gateway.audit.enabled", false)
+	viper.SetDefault("gateway.audit.input_capture_mode", "preview")
+	viper.SetDefault("gateway.audit.output_capture_mode", "preview")
+	viper.SetDefault("gateway.audit.file_enabled", true)
+	viper.SetDefault("gateway.audit.file_path", "/app/data/audit/audit.jsonl")
+	viper.SetDefault("gateway.audit.ops_index_enabled", true)
+	viper.SetDefault("gateway.audit.index_timeout_ms", 2000)
+	viper.SetDefault("gateway.audit.index_enabled", true)
+	viper.SetDefault("gateway.audit.index_async_enabled", true)
+	viper.SetDefault("gateway.audit.index_queue_size", 10000)
+	viper.SetDefault("gateway.audit.index_worker_count", 2)
+	viper.SetDefault("gateway.audit.index_batch_size", 200)
+	viper.SetDefault("gateway.audit.index_flush_interval_ms", 200)
+	viper.SetDefault("gateway.audit.index_write_timeout_ms", 2000)
+	viper.SetDefault("gateway.audit.backfill_enabled", true)
+	viper.SetDefault("gateway.audit.backfill_interval_ms", 30000)
+	viper.SetDefault("gateway.audit.backfill_batch_size", 500)
+	viper.SetDefault("gateway.audit.retention_cleanup_interval_minutes", 60)
+	viper.SetDefault("gateway.audit.max_input_body_bytes", DefaultGatewayAuditMaxInputBodyBytes)
+	viper.SetDefault("gateway.audit.max_output_body_bytes", DefaultGatewayAuditMaxOutputBodyBytes)
+	viper.SetDefault("gateway.audit.max_string_value_bytes", 8*1024)
+	viper.SetDefault("gateway.audit.max_array_items", 50)
+	viper.SetDefault("gateway.audit.max_object_depth", 16)
+	viper.SetDefault("gateway.audit.sample_rate", 1.0)
+	viper.SetDefault("gateway.audit.include_paths", []string{
+		"/v1/messages",
+		"/v1beta/models",
+		"/v1/responses",
+		"/responses",
+		"/backend-api/codex/responses",
+		"/antigravity/v1/messages",
+		"/antigravity/v1/messages/count_tokens",
+		"/antigravity/v1beta/models",
+		"/v1/chat/completions",
+		"/chat/completions",
+		"/v1/embeddings",
+		"/embeddings",
+		"/v1/images/generations",
+		"/v1/images/edits",
+		"/images/generations",
+		"/images/edits",
+	})
+	viper.SetDefault("gateway.audit.exclude_paths", []string{"/health", "/setup/status"})
+	viper.SetDefault("gateway.audit.redact_keys", []string{
+		"authorization",
+		"x-api-key",
+		"x-goog-api-key",
+		"cookie",
+		"set-cookie",
+		"access_token",
+		"refresh_token",
+		"id_token",
+		"client_secret",
+		"password",
+		"api_key",
+		"session_id",
+		"conversation_id",
+		"prompt_cache_key",
+	})
+	viper.SetDefault("gateway.audit.retention_days", 3)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
@@ -2697,6 +2810,30 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.MaxLineSize != 0 && c.Gateway.MaxLineSize < 1024*1024 {
 		return fmt.Errorf("gateway.max_line_size must be at least 1MB")
+	}
+	if c.Gateway.Audit.IndexQueueSize < 0 {
+		return fmt.Errorf("gateway.audit.index_queue_size must be non-negative")
+	}
+	if c.Gateway.Audit.IndexWorkerCount < 0 {
+		return fmt.Errorf("gateway.audit.index_worker_count must be non-negative")
+	}
+	if c.Gateway.Audit.IndexBatchSize < 0 {
+		return fmt.Errorf("gateway.audit.index_batch_size must be non-negative")
+	}
+	if c.Gateway.Audit.IndexFlushIntervalMs < 0 {
+		return fmt.Errorf("gateway.audit.index_flush_interval_ms must be non-negative")
+	}
+	if c.Gateway.Audit.IndexWriteTimeoutMs < 0 {
+		return fmt.Errorf("gateway.audit.index_write_timeout_ms must be non-negative")
+	}
+	if c.Gateway.Audit.BackfillIntervalMs < 0 {
+		return fmt.Errorf("gateway.audit.backfill_interval_ms must be non-negative")
+	}
+	if c.Gateway.Audit.BackfillBatchSize < 0 {
+		return fmt.Errorf("gateway.audit.backfill_batch_size must be non-negative")
+	}
+	if c.Gateway.Audit.RetentionCleanupIntervalMinutes < 0 {
+		return fmt.Errorf("gateway.audit.retention_cleanup_interval_minutes must be non-negative")
 	}
 	if c.Gateway.UsageRecord.WorkerCount <= 0 {
 		return fmt.Errorf("gateway.usage_record.worker_count must be positive")

@@ -80,6 +80,9 @@ func RegisterAdminRoutes(
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
 
+		// 网关审计排障
+		registerAuditRoutes(admin, h)
+
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
 
@@ -583,6 +586,19 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.GET("/cleanup-tasks", h.Admin.Usage.ListCleanupTasks)
 		usage.POST("/cleanup-tasks", h.Admin.Usage.CreateCleanupTask)
 		usage.POST("/cleanup-tasks/:id/cancel", h.Admin.Usage.CancelCleanupTask)
+	}
+}
+
+func registerAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	audit := admin.Group("/audit")
+	{
+		audit.GET("", h.Admin.Audit.List)
+		audit.GET("/stats", h.Admin.Audit.Stats)
+		audit.GET("/health", h.Admin.Audit.Health)
+		audit.GET("/access-logs", h.Admin.Audit.AccessLogs)
+		audit.GET("/by-request", h.Admin.Audit.ByRequest)
+		audit.POST("/export", h.Admin.Audit.Export)
+		audit.GET("/:audit_id", h.Admin.Audit.Get)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net/http"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -499,6 +500,9 @@ func releaseOpsCaptureWriter(w *opsCaptureWriter) {
 }
 
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
+	if w == nil || w.ResponseWriter == nil {
+		return 0, http.ErrAbortHandler
+	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
 		if len(b) > remaining {
@@ -511,6 +515,9 @@ func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 }
 
 func (w *opsCaptureWriter) WriteString(s string) (int, error) {
+	if w == nil || w.ResponseWriter == nil {
+		return 0, http.ErrAbortHandler
+	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
 		if len(s) > remaining {
@@ -520,6 +527,41 @@ func (w *opsCaptureWriter) WriteString(s string) (int, error) {
 		}
 	}
 	return w.ResponseWriter.WriteString(s)
+}
+
+func (w *opsCaptureWriter) Status() int {
+	if w == nil || w.ResponseWriter == nil {
+		return http.StatusOK
+	}
+	return w.ResponseWriter.Status()
+}
+
+func (w *opsCaptureWriter) Written() bool {
+	if w == nil || w.ResponseWriter == nil {
+		return false
+	}
+	return w.ResponseWriter.Written()
+}
+
+func (w *opsCaptureWriter) Size() int {
+	if w == nil || w.ResponseWriter == nil {
+		return 0
+	}
+	return w.ResponseWriter.Size()
+}
+
+func (w *opsCaptureWriter) Header() http.Header {
+	if w == nil || w.ResponseWriter == nil {
+		return http.Header{}
+	}
+	return w.ResponseWriter.Header()
+}
+
+func (w *opsCaptureWriter) WriteHeaderNow() {
+	if w == nil || w.ResponseWriter == nil {
+		return
+	}
+	w.ResponseWriter.WriteHeaderNow()
 }
 
 // OpsErrorLoggerMiddleware records error responses (status >= 400) into ops_error_logs.
@@ -534,9 +576,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		defer func() {
 			// Restore the original writer before returning so outer middlewares
 			// don't observe a pooled wrapper that has been released.
-			if c.Writer == w {
-				c.Writer = originalWriter
-			}
+			c.Writer = originalWriter
 			releaseOpsCaptureWriter(w)
 		}()
 		c.Writer = w

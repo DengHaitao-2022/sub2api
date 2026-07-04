@@ -436,6 +436,35 @@ const (
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"
 
 	// Gateway Forwarding Behavior
+	// SettingKeyGatewayAuditEnabled 是否启用网关请求/响应审计（默认跟随 config.gateway.audit.enabled）
+	SettingKeyGatewayAuditEnabled = "gateway_audit_enabled"
+	// Gateway audit runtime/capture configuration
+	SettingKeyGatewayAuditInputCaptureMode                = "gateway_audit_input_capture_mode"
+	SettingKeyGatewayAuditOutputCaptureMode               = "gateway_audit_output_capture_mode"
+	SettingKeyGatewayAuditFileEnabled                     = "gateway_audit_file_enabled"
+	SettingKeyGatewayAuditFilePath                        = "gateway_audit_file_path"
+	SettingKeyGatewayAuditOpsIndexEnabled                 = "gateway_audit_ops_index_enabled"
+	SettingKeyGatewayAuditIndexEnabled                    = "gateway_audit_index_enabled"
+	SettingKeyGatewayAuditIndexAsyncEnabled               = "gateway_audit_index_async_enabled"
+	SettingKeyGatewayAuditIndexQueueSize                  = "gateway_audit_index_queue_size"
+	SettingKeyGatewayAuditIndexWorkerCount                = "gateway_audit_index_worker_count"
+	SettingKeyGatewayAuditIndexBatchSize                  = "gateway_audit_index_batch_size"
+	SettingKeyGatewayAuditIndexFlushIntervalMs            = "gateway_audit_index_flush_interval_ms"
+	SettingKeyGatewayAuditIndexWriteTimeoutMs             = "gateway_audit_index_write_timeout_ms"
+	SettingKeyGatewayAuditBackfillEnabled                 = "gateway_audit_backfill_enabled"
+	SettingKeyGatewayAuditBackfillIntervalMs              = "gateway_audit_backfill_interval_ms"
+	SettingKeyGatewayAuditBackfillBatchSize               = "gateway_audit_backfill_batch_size"
+	SettingKeyGatewayAuditRetentionCleanupIntervalMinutes = "gateway_audit_retention_cleanup_interval_minutes"
+	SettingKeyGatewayAuditMaxInputBodyBytes               = "gateway_audit_max_input_body_bytes"
+	SettingKeyGatewayAuditMaxOutputBodyBytes              = "gateway_audit_max_output_body_bytes"
+	SettingKeyGatewayAuditMaxStringValueBytes             = "gateway_audit_max_string_value_bytes"
+	SettingKeyGatewayAuditMaxArrayItems                   = "gateway_audit_max_array_items"
+	SettingKeyGatewayAuditMaxObjectDepth                  = "gateway_audit_max_object_depth"
+	SettingKeyGatewayAuditSampleRate                      = "gateway_audit_sample_rate"
+	SettingKeyGatewayAuditIncludePaths                    = "gateway_audit_include_paths"
+	SettingKeyGatewayAuditExcludePaths                    = "gateway_audit_exclude_paths"
+	SettingKeyGatewayAuditRedactKeys                      = "gateway_audit_redact_keys"
+	SettingKeyGatewayAuditRetentionDays                   = "gateway_audit_retention_days"
 	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号的 X-Stainless-* 指纹头（默认 true）
 	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
 	// SettingKeyEnableMetadataPassthrough 是否透传客户端原始 metadata.user_id（默认 false）

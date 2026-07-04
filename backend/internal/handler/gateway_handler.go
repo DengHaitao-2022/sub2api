@@ -189,6 +189,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	captureGatewayInput(c, "anthropic", "messages", reqModel, reqStream, body)
 
 	// 验证 model 必填
 	if reqModel == "" {
@@ -338,7 +339,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID, account.Platform)
+			setSelectedAccountContexts(c, account)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -422,6 +423,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			forwardStart := time.Now()
 			if account.Platform == service.PlatformAntigravity {
 				result, err = h.antigravityGatewayService.ForwardGemini(
 					requestCtx,
@@ -437,10 +439,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			} else {
 				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
 			}
+			forwardDurationMs := time.Since(forwardStart).Milliseconds()
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 			}
 			if err != nil {
+				attemptStatus := c.Writer.Status()
+				if attemptStatus < http.StatusBadRequest {
+					attemptStatus = 0
+				}
+				markGatewayAuditAttemptResult(c, attemptStatus, forwardDurationMs, err)
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
@@ -485,6 +493,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
 				return
 			}
+			markGatewayAuditAttemptResult(c, c.Writer.Status(), forwardDurationMs, nil)
 
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
@@ -624,7 +633,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID, account.Platform)
+			setSelectedAccountContexts(c, account)
 
 			// [DEBUG-STICKY] 打印账号选择结果
 			reqLog.Info("sticky.account_selected",
@@ -790,11 +799,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			forwardStart := time.Now()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
 			}
+			forwardDurationMs := time.Since(forwardStart).Milliseconds()
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
 			if queueRelease != nil {
@@ -807,6 +818,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				accountReleaseFunc()
 			}
 			if err != nil {
+				attemptStatus := c.Writer.Status()
+				if attemptStatus < http.StatusBadRequest {
+					attemptStatus = 0
+				}
+				markGatewayAuditAttemptResult(c, attemptStatus, forwardDurationMs, err)
 				// Beta policy block: return 400 immediately, no failover
 				var betaBlockedErr *service.BetaBlockedError
 				if errors.As(err, &betaBlockedErr) {
@@ -905,6 +921,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
 				return
 			}
+			markGatewayAuditAttemptResult(c, c.Writer.Status(), forwardDurationMs, nil)
 
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
@@ -1811,14 +1828,21 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
 		return
 	}
-	setOpsSelectedAccount(c, account.ID, account.Platform)
+	setSelectedAccountContexts(c, account)
 
 	// 转发请求（不记录使用量）
+	forwardStart := time.Now()
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
+		attemptStatus := c.Writer.Status()
+		if attemptStatus < http.StatusBadRequest {
+			attemptStatus = 0
+		}
+		markGatewayAuditAttemptResult(c, attemptStatus, time.Since(forwardStart).Milliseconds(), err)
 		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		// 错误响应已在 ForwardCountTokens 中处理
 		return
 	}
+	markGatewayAuditAttemptResult(c, c.Writer.Status(), time.Since(forwardStart).Milliseconds(), nil)
 }
 
 // InterceptType 表示请求拦截类型

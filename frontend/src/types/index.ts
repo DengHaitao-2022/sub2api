@@ -1356,6 +1356,10 @@ export interface AdminUsageLog extends UsageLog {
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary
+
+  audit_available?: boolean
+  audit_id?: string | null
+  audit_status?: 'captured' | 'not_recorded' | 'no_request_id' | string
 }
 
 export interface UsageCleanupFilters {
