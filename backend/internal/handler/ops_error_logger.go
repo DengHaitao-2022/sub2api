@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"runtime"
 	"runtime/debug"
@@ -499,6 +501,78 @@ func releaseOpsCaptureWriter(w *opsCaptureWriter) {
 	opsCaptureWriterPool.Put(w)
 }
 
+func (w *opsCaptureWriter) Status() int {
+	if w.ResponseWriter == nil {
+		return 0
+	}
+	return w.ResponseWriter.Status()
+}
+
+func (w *opsCaptureWriter) Size() int {
+	if w.ResponseWriter == nil {
+		return -1
+	}
+	return w.ResponseWriter.Size()
+}
+
+func (w *opsCaptureWriter) Written() bool {
+	if w.ResponseWriter == nil {
+		return false
+	}
+	return w.ResponseWriter.Written()
+}
+
+func (w *opsCaptureWriter) Header() http.Header {
+	if w.ResponseWriter == nil {
+		return http.Header{}
+	}
+	return w.ResponseWriter.Header()
+}
+
+func (w *opsCaptureWriter) WriteHeader(code int) {
+	if w.ResponseWriter == nil {
+		return
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *opsCaptureWriter) WriteHeaderNow() {
+	if w.ResponseWriter == nil {
+		return
+	}
+	w.ResponseWriter.WriteHeaderNow()
+}
+
+func (w *opsCaptureWriter) Flush() {
+	if w.ResponseWriter == nil {
+		return
+	}
+	w.ResponseWriter.Flush()
+}
+
+func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if w.ResponseWriter == nil {
+		return nil, nil, errors.New("response writer released")
+	}
+	return w.ResponseWriter.Hijack()
+}
+
+func (w *opsCaptureWriter) CloseNotify() <-chan bool {
+	if w.ResponseWriter == nil {
+		ch := make(chan bool)
+		close(ch)
+		return ch
+	}
+	return w.ResponseWriter.CloseNotify()
+}
+
+func (w *opsCaptureWriter) Pusher() http.Pusher {
+	if w.ResponseWriter == nil {
+		return nil
+	}
+	return w.ResponseWriter.Pusher()
+}
+
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 	if w == nil || w.ResponseWriter == nil {
 		return 0, http.ErrAbortHandler
@@ -529,41 +603,6 @@ func (w *opsCaptureWriter) WriteString(s string) (int, error) {
 	return w.ResponseWriter.WriteString(s)
 }
 
-func (w *opsCaptureWriter) Status() int {
-	if w == nil || w.ResponseWriter == nil {
-		return http.StatusOK
-	}
-	return w.ResponseWriter.Status()
-}
-
-func (w *opsCaptureWriter) Written() bool {
-	if w == nil || w.ResponseWriter == nil {
-		return false
-	}
-	return w.ResponseWriter.Written()
-}
-
-func (w *opsCaptureWriter) Size() int {
-	if w == nil || w.ResponseWriter == nil {
-		return 0
-	}
-	return w.ResponseWriter.Size()
-}
-
-func (w *opsCaptureWriter) Header() http.Header {
-	if w == nil || w.ResponseWriter == nil {
-		return http.Header{}
-	}
-	return w.ResponseWriter.Header()
-}
-
-func (w *opsCaptureWriter) WriteHeaderNow() {
-	if w == nil || w.ResponseWriter == nil {
-		return
-	}
-	w.ResponseWriter.WriteHeaderNow()
-}
-
 // OpsErrorLoggerMiddleware records error responses (status >= 400) into ops_error_logs.
 //
 // Notes:
@@ -576,7 +615,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		defer func() {
 			// Restore the original writer before returning so outer middlewares
 			// don't observe a pooled wrapper that has been released.
-			c.Writer = originalWriter
+			if c.Writer == w {
+				c.Writer = originalWriter
+			}
 			releaseOpsCaptureWriter(w)
 		}()
 		c.Writer = w
