@@ -62,6 +62,45 @@ func normalizeGatewayAuditCaptureModeInput(raw string, fallback string) string {
 	}
 }
 
+// applyGatewayAuditSettingsDTO keeps the admin settings response in sync with
+// the runtime settings model. The GET and PUT handlers both return the same
+// DTO, so centralizing this relatively large field group avoids silently
+// falling back to Go zero values when new audit options are added or handlers
+// are split during refactors.
+func applyGatewayAuditSettingsDTO(payload *dto.SystemSettings, settings *service.SystemSettings) {
+	if payload == nil || settings == nil {
+		return
+	}
+
+	payload.GatewayAuditEnabled = settings.GatewayAuditEnabled
+	payload.GatewayAuditInputCaptureMode = settings.GatewayAuditInputCaptureMode
+	payload.GatewayAuditOutputCaptureMode = settings.GatewayAuditOutputCaptureMode
+	payload.GatewayAuditFileEnabled = settings.GatewayAuditFileEnabled
+	payload.GatewayAuditFilePath = settings.GatewayAuditFilePath
+	payload.GatewayAuditOpsIndexEnabled = settings.GatewayAuditOpsIndexEnabled
+	payload.GatewayAuditIndexEnabled = settings.GatewayAuditIndexEnabled
+	payload.GatewayAuditIndexAsyncEnabled = settings.GatewayAuditIndexAsyncEnabled
+	payload.GatewayAuditIndexQueueSize = settings.GatewayAuditIndexQueueSize
+	payload.GatewayAuditIndexWorkerCount = settings.GatewayAuditIndexWorkerCount
+	payload.GatewayAuditIndexBatchSize = settings.GatewayAuditIndexBatchSize
+	payload.GatewayAuditIndexFlushIntervalMs = settings.GatewayAuditIndexFlushIntervalMs
+	payload.GatewayAuditIndexWriteTimeoutMs = settings.GatewayAuditIndexWriteTimeoutMs
+	payload.GatewayAuditBackfillEnabled = settings.GatewayAuditBackfillEnabled
+	payload.GatewayAuditBackfillIntervalMs = settings.GatewayAuditBackfillIntervalMs
+	payload.GatewayAuditBackfillBatchSize = settings.GatewayAuditBackfillBatchSize
+	payload.GatewayAuditRetentionCleanupIntervalMinutes = settings.GatewayAuditRetentionCleanupIntervalMinutes
+	payload.GatewayAuditMaxInputBodyBytes = settings.GatewayAuditMaxInputBodyBytes
+	payload.GatewayAuditMaxOutputBodyBytes = settings.GatewayAuditMaxOutputBodyBytes
+	payload.GatewayAuditMaxStringValueBytes = settings.GatewayAuditMaxStringValueBytes
+	payload.GatewayAuditMaxArrayItems = settings.GatewayAuditMaxArrayItems
+	payload.GatewayAuditMaxObjectDepth = settings.GatewayAuditMaxObjectDepth
+	payload.GatewayAuditSampleRate = settings.GatewayAuditSampleRate
+	payload.GatewayAuditIncludePaths = append([]string(nil), settings.GatewayAuditIncludePaths...)
+	payload.GatewayAuditExcludePaths = append([]string(nil), settings.GatewayAuditExcludePaths...)
+	payload.GatewayAuditRedactKeys = append([]string(nil), settings.GatewayAuditRedactKeys...)
+	payload.GatewayAuditRetentionDays = settings.GatewayAuditRetentionDays
+}
+
 func normalizeStringList(values []string) []string {
 	out := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -359,6 +398,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	}
+	applyGatewayAuditSettingsDTO(&payload, settings)
 
 	// OpenAI fast policy (stored under a dedicated setting key)
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {

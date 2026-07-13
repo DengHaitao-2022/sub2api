@@ -9519,6 +9519,37 @@ function removeCodexWhitelistRow(i: number): void {
   codexWhitelistRows.value.splice(i, 1);
 }
 
+const gatewayAuditCaptureModes = new Set(["none", "hash", "preview", "full"]);
+
+function hasValidGatewayAuditResponse(
+  settings: Partial<SystemSettings>,
+): boolean {
+  return (
+    gatewayAuditCaptureModes.has(
+      String(settings.gateway_audit_input_capture_mode || "").toLowerCase(),
+    ) &&
+    gatewayAuditCaptureModes.has(
+      String(settings.gateway_audit_output_capture_mode || "").toLowerCase(),
+    )
+  );
+}
+
+function applySettingsResponseToForm(settings: Partial<SystemSettings>): void {
+  // Older/refactored backends could expose the audit DTO fields as Go zero
+  // values because the response mapper omitted the whole group. Do not let an
+  // incomplete response replace usable form defaults with blank modes and 0s.
+  const hasGatewayAuditConfig = hasValidGatewayAuditResponse(settings);
+
+  for (const [key, value] of Object.entries(settings)) {
+    if (key === "openai_fast_policy_settings") continue;
+    if (key.startsWith("gateway_audit_") && !hasGatewayAuditConfig) continue;
+    // null means unconfigured; keep the current/default form value.
+    if (value !== null && value !== undefined) {
+      (form as Record<string, unknown>)[key] = value;
+    }
+  }
+}
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -9526,12 +9557,7 @@ async function loadSettings() {
     const settings = await adminAPI.settings.getSettings();
     settings.payment_load_balance_strategy =
       settings.payment_load_balance_strategy || "round-robin";
-    // Only assign non-null values from backend (null means unconfigured, keep defaults)
-    for (const [key, value] of Object.entries(settings)) {
-      if (value !== null && value !== undefined) {
-        (form as Record<string, unknown>)[key] = value;
-      }
-    }
+    applySettingsResponseToForm(settings);
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
         defaultClaudeOAuthSystemPromptBlocks;
@@ -10229,12 +10255,7 @@ async function saveSettings() {
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
     const updated = await adminAPI.settings.updateSettings(payload);
-    for (const [key, value] of Object.entries(updated)) {
-      if (key === "openai_fast_policy_settings") continue;
-      if (value !== null && value !== undefined) {
-        (form as Record<string, unknown>)[key] = value;
-      }
-    }
+    applySettingsResponseToForm(updated);
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
     registrationEmailSuffixWhitelistTags.value =

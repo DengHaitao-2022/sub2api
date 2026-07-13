@@ -159,6 +159,96 @@ func TestSettingHandler_GetSettings_InjectsAuthSourceDefaults(t *testing.T) {
 	require.Len(t, subscriptions, 1)
 }
 
+func TestSettingHandler_GetSettings_ReturnsGatewayAuditConfiguration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyGatewayAuditEnabled:           "true",
+			service.SettingKeyGatewayAuditInputCaptureMode:  "full",
+			service.SettingKeyGatewayAuditOutputCaptureMode: "hash",
+			service.SettingKeyGatewayAuditFileEnabled:       "false",
+			service.SettingKeyGatewayAuditFilePath:          "/tmp/current-audit.jsonl",
+			service.SettingKeyGatewayAuditIndexEnabled:      "true",
+			service.SettingKeyGatewayAuditMaxInputBodyBytes: "131072",
+			service.SettingKeyGatewayAuditSampleRate:        "0.42",
+			service.SettingKeyGatewayAuditIncludePaths:      `["/v1/messages","/v1/responses"]`,
+			service.SettingKeyGatewayAuditExcludePaths:      `["/health"]`,
+			service.SettingKeyGatewayAuditRedactKeys:        `["authorization","api_key"]`,
+			service.SettingKeyGatewayAuditRetentionDays:     "9",
+			service.SettingKeyRewriteMessageCacheControl:    "true",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+
+	handler.GetSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, data["gateway_audit_enabled"])
+	require.Equal(t, "full", data["gateway_audit_input_capture_mode"])
+	require.Equal(t, "hash", data["gateway_audit_output_capture_mode"])
+	require.Equal(t, false, data["gateway_audit_file_enabled"])
+	require.Equal(t, "/tmp/current-audit.jsonl", data["gateway_audit_file_path"])
+	require.Equal(t, true, data["gateway_audit_index_enabled"])
+	require.Equal(t, float64(131072), data["gateway_audit_max_input_body_bytes"])
+	require.Equal(t, 0.42, data["gateway_audit_sample_rate"])
+	require.Equal(t, []any{"/v1/messages", "/v1/responses"}, data["gateway_audit_include_paths"])
+	require.Equal(t, []any{"/health"}, data["gateway_audit_exclude_paths"])
+	require.Equal(t, []any{"authorization", "api_key"}, data["gateway_audit_redact_keys"])
+	require.Equal(t, float64(9), data["gateway_audit_retention_days"])
+	require.Equal(t, true, data["rewrite_message_cache_control"])
+}
+
+func TestSettingHandler_UpdateSettings_ReturnsUpdatedGatewayAuditConfiguration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyGatewayAuditInputCaptureMode:  "preview",
+			service.SettingKeyGatewayAuditOutputCaptureMode: "preview",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"gateway_audit_enabled":             true,
+		"gateway_audit_input_capture_mode":  "hash",
+		"gateway_audit_output_capture_mode": "full",
+		"gateway_audit_sample_rate":         0.75,
+		"gateway_audit_include_paths":       []string{"/v1/messages"},
+		"gateway_audit_redact_keys":         []string{"authorization"},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, data["gateway_audit_enabled"])
+	require.Equal(t, "hash", data["gateway_audit_input_capture_mode"])
+	require.Equal(t, "full", data["gateway_audit_output_capture_mode"])
+	require.Equal(t, 0.75, data["gateway_audit_sample_rate"])
+	require.Equal(t, []any{"/v1/messages"}, data["gateway_audit_include_paths"])
+	require.Equal(t, []any{"authorization"}, data["gateway_audit_redact_keys"])
+}
+
 func TestSettingHandler_UpdateSettings_PreservesOmittedAuthSourceDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{
