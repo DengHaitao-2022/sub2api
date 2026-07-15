@@ -874,6 +874,8 @@ type GatewayAuditConfig struct {
 	// none / hash / preview / full
 	InputCaptureMode  string `mapstructure:"input_capture_mode"`
 	OutputCaptureMode string `mapstructure:"output_capture_mode"`
+	// all / user_messages / last_user_message / metadata_only
+	InputMessagePolicy string `mapstructure:"input_message_policy"`
 
 	FileEnabled bool   `mapstructure:"file_enabled"`
 	FilePath    string `mapstructure:"file_path"`
@@ -2069,6 +2071,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.audit.enabled", false)
 	viper.SetDefault("gateway.audit.input_capture_mode", "preview")
 	viper.SetDefault("gateway.audit.output_capture_mode", "preview")
+	viper.SetDefault("gateway.audit.input_message_policy", "all")
 	viper.SetDefault("gateway.audit.file_enabled", true)
 	viper.SetDefault("gateway.audit.file_path", "/app/data/audit/audit.jsonl")
 	viper.SetDefault("gateway.audit.ops_index_enabled", true)

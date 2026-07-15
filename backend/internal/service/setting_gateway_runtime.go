@@ -742,6 +742,19 @@ func normalizeGatewayAuditCaptureMode(raw string, fallback string) string {
 	}
 }
 
+func normalizeGatewayAuditInputMessagePolicy(raw string, fallback string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "all", "user_messages", "last_user_message", "metadata_only":
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+	switch strings.ToLower(strings.TrimSpace(fallback)) {
+	case "all", "user_messages", "last_user_message", "metadata_only":
+		return strings.ToLower(strings.TrimSpace(fallback))
+	default:
+		return "all"
+	}
+}
+
 func normalizeGatewayAuditBodyLimit(value int64, mode string, defaultValue int64, fullMax int64) int64 {
 	if value <= 0 {
 		value = defaultValue
@@ -798,6 +811,11 @@ func (s *SettingService) mergeGatewayAuditConfigSettings(values map[string]strin
 		out.OutputCaptureMode = normalizeGatewayAuditCaptureMode(raw, base.OutputCaptureMode)
 	} else {
 		out.OutputCaptureMode = normalizeGatewayAuditCaptureMode(base.OutputCaptureMode, "preview")
+	}
+	if raw, ok := values[SettingKeyGatewayAuditInputMessagePolicy]; ok {
+		out.InputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(raw, base.InputMessagePolicy)
+	} else {
+		out.InputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(base.InputMessagePolicy, "all")
 	}
 	if raw, ok := values[SettingKeyGatewayAuditFileEnabled]; ok && strings.TrimSpace(raw) != "" {
 		out.FileEnabled = strings.TrimSpace(raw) == "true"
@@ -919,6 +937,7 @@ func (s *SettingService) GetGatewayAuditConfig(ctx context.Context) config.Gatew
 			SettingKeyGatewayAuditEnabled,
 			SettingKeyGatewayAuditInputCaptureMode,
 			SettingKeyGatewayAuditOutputCaptureMode,
+			SettingKeyGatewayAuditInputMessagePolicy,
 			SettingKeyGatewayAuditFileEnabled,
 			SettingKeyGatewayAuditFilePath,
 			SettingKeyGatewayAuditOpsIndexEnabled,

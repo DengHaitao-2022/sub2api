@@ -4191,6 +4191,21 @@
 
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditInputMessagePolicy") }}
+                        </label>
+                        <select v-model="form.gateway_audit_input_message_policy" class="input">
+                          <option
+                            v-for="option in gatewayAuditInputMessagePolicyOptions"
+                            :key="`input-policy-${option.value}`"
+                            :value="option.value"
+                          >
+                            {{ option.label }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           {{ t("admin.settings.gatewayForwarding.gatewayAuditSampleRate") }}
                         </label>
                         <input
@@ -8577,6 +8592,7 @@ const form = reactive<SettingsForm>({
   gateway_audit_enabled: false,
   gateway_audit_input_capture_mode: "preview",
   gateway_audit_output_capture_mode: "preview",
+  gateway_audit_input_message_policy: "all",
   gateway_audit_file_enabled: true,
   gateway_audit_file_path: "/app/data/audit/audit.jsonl",
   gateway_audit_ops_index_enabled: true,
@@ -9367,6 +9383,13 @@ const gatewayAuditCaptureModeOptions = computed(() => [
   { value: "full", label: t("admin.settings.gatewayForwarding.auditCaptureFull") },
 ]);
 
+const gatewayAuditInputMessagePolicyOptions = computed(() => [
+  { value: "all", label: t("admin.settings.gatewayForwarding.auditInputPolicyAll") },
+  { value: "user_messages", label: t("admin.settings.gatewayForwarding.auditInputPolicyUserMessages") },
+  { value: "last_user_message", label: t("admin.settings.gatewayForwarding.auditInputPolicyLastUserMessage") },
+  { value: "metadata_only", label: t("admin.settings.gatewayForwarding.auditInputPolicyMetadataOnly") },
+]);
+
 const gatewayAuditFullCaptureSelected = computed(
   () =>
     form.gateway_audit_input_capture_mode === "full" ||
@@ -10034,6 +10057,7 @@ async function saveSettings() {
       gateway_audit_enabled: form.gateway_audit_enabled,
       gateway_audit_input_capture_mode: form.gateway_audit_input_capture_mode,
       gateway_audit_output_capture_mode: form.gateway_audit_output_capture_mode,
+      gateway_audit_input_message_policy: form.gateway_audit_input_message_policy,
       gateway_audit_file_enabled: form.gateway_audit_file_enabled,
       gateway_audit_file_path: form.gateway_audit_file_path?.trim() || "",
       gateway_audit_ops_index_enabled: form.gateway_audit_ops_index_enabled,

@@ -218,6 +218,7 @@ type UpdateSettingsRequest struct {
 	GatewayAuditEnabled                         *bool     `json:"gateway_audit_enabled"`
 	GatewayAuditInputCaptureMode                *string   `json:"gateway_audit_input_capture_mode"`
 	GatewayAuditOutputCaptureMode               *string   `json:"gateway_audit_output_capture_mode"`
+	GatewayAuditInputMessagePolicy              *string   `json:"gateway_audit_input_message_policy"`
 	GatewayAuditFileEnabled                     *bool     `json:"gateway_audit_file_enabled"`
 	GatewayAuditFilePath                        *string   `json:"gateway_audit_file_path"`
 	GatewayAuditOpsIndexEnabled                 *bool     `json:"gateway_audit_ops_index_enabled"`
@@ -1366,6 +1367,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return normalizeGatewayAuditCaptureModeInput(*req.GatewayAuditOutputCaptureMode, previousSettings.GatewayAuditOutputCaptureMode)
 			}
 			return previousSettings.GatewayAuditOutputCaptureMode
+		}(),
+		GatewayAuditInputMessagePolicy: func() string {
+			if req.GatewayAuditInputMessagePolicy != nil {
+				return normalizeGatewayAuditInputMessagePolicyInput(*req.GatewayAuditInputMessagePolicy, previousSettings.GatewayAuditInputMessagePolicy)
+			}
+			return previousSettings.GatewayAuditInputMessagePolicy
 		}(),
 		GatewayAuditFileEnabled: func() bool {
 			if req.GatewayAuditFileEnabled != nil {

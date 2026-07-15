@@ -359,6 +359,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyGatewayAuditEnabled] = strconv.FormatBool(settings.GatewayAuditEnabled)
 	updates[SettingKeyGatewayAuditInputCaptureMode] = normalizeGatewayAuditCaptureMode(settings.GatewayAuditInputCaptureMode, "preview")
 	updates[SettingKeyGatewayAuditOutputCaptureMode] = normalizeGatewayAuditCaptureMode(settings.GatewayAuditOutputCaptureMode, "preview")
+	updates[SettingKeyGatewayAuditInputMessagePolicy] = normalizeGatewayAuditInputMessagePolicy(settings.GatewayAuditInputMessagePolicy, "all")
 	updates[SettingKeyGatewayAuditFileEnabled] = strconv.FormatBool(settings.GatewayAuditFileEnabled)
 	updates[SettingKeyGatewayAuditFilePath] = strings.TrimSpace(settings.GatewayAuditFilePath)
 	updates[SettingKeyGatewayAuditOpsIndexEnabled] = strconv.FormatBool(settings.GatewayAuditOpsIndexEnabled)
@@ -582,6 +583,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	gatewayAuditCfg.Enabled = settings.GatewayAuditEnabled
 	gatewayAuditCfg.InputCaptureMode = settings.GatewayAuditInputCaptureMode
 	gatewayAuditCfg.OutputCaptureMode = settings.GatewayAuditOutputCaptureMode
+	gatewayAuditCfg.InputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(settings.GatewayAuditInputMessagePolicy, "all")
 	gatewayAuditCfg.FileEnabled = settings.GatewayAuditFileEnabled
 	gatewayAuditCfg.FilePath = settings.GatewayAuditFilePath
 	gatewayAuditCfg.OpsIndexEnabled = settings.GatewayAuditOpsIndexEnabled

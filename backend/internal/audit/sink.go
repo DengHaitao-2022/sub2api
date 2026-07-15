@@ -456,7 +456,7 @@ func buildIndexRecord(cfg config.GatewayAuditConfig, event *Event, result *JSONL
 		HasFailover:             hasFailover(event.Attempts),
 		FirstUpstreamStatusCode: firstAttemptStatusCode(event.Attempts),
 		FinalUpstreamStatusCode: finalAttemptStatusCode(event.Attempts),
-		CaptureMode:             normalizeCaptureMode(cfg.InputCaptureMode) + "/" + normalizeCaptureMode(cfg.OutputCaptureMode),
+		CaptureMode:             captureModeSummary(cfg),
 		Sampled:                 true,
 		CreatedAt:               event.Timestamp,
 	}
@@ -476,6 +476,14 @@ func buildIndexRecord(cfg config.GatewayAuditConfig, event *Event, result *JSONL
 		record.OutputTruncated = event.Output.Truncated
 	}
 	return record
+}
+
+func captureModeSummary(cfg config.GatewayAuditConfig) string {
+	inputMode := normalizeCaptureMode(cfg.InputCaptureMode)
+	if policy := normalizeInputMessagePolicy(cfg.InputMessagePolicy); policy != inputMessagePolicyAll {
+		inputMode += ":" + policy
+	}
+	return inputMode + "/" + normalizeCaptureMode(cfg.OutputCaptureMode)
 }
 
 func hasFailover(attempts []AttemptRecord) bool {

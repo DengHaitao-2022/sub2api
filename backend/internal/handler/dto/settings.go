@@ -181,6 +181,7 @@ type SystemSettings struct {
 	GatewayAuditEnabled                         bool     `json:"gateway_audit_enabled"`
 	GatewayAuditInputCaptureMode                string   `json:"gateway_audit_input_capture_mode"`
 	GatewayAuditOutputCaptureMode               string   `json:"gateway_audit_output_capture_mode"`
+	GatewayAuditInputMessagePolicy              string   `json:"gateway_audit_input_message_policy"`
 	GatewayAuditFileEnabled                     bool     `json:"gateway_audit_file_enabled"`
 	GatewayAuditFilePath                        string   `json:"gateway_audit_file_path"`
 	GatewayAuditOpsIndexEnabled                 bool     `json:"gateway_audit_ops_index_enabled"`

@@ -235,6 +235,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyGatewayAuditEnabled:                                strconv.FormatBool(s.defaultGatewayAuditEnabled()),
 		SettingKeyGatewayAuditInputCaptureMode:                       normalizeGatewayAuditCaptureMode(gatewayAuditCfg.InputCaptureMode, "preview"),
 		SettingKeyGatewayAuditOutputCaptureMode:                      normalizeGatewayAuditCaptureMode(gatewayAuditCfg.OutputCaptureMode, "preview"),
+		SettingKeyGatewayAuditInputMessagePolicy:                     normalizeGatewayAuditInputMessagePolicy(gatewayAuditCfg.InputMessagePolicy, "all"),
 		SettingKeyGatewayAuditFileEnabled:                            strconv.FormatBool(gatewayAuditCfg.FileEnabled),
 		SettingKeyGatewayAuditFilePath:                               strings.TrimSpace(gatewayAuditCfg.FilePath),
 		SettingKeyGatewayAuditOpsIndexEnabled:                        strconv.FormatBool(gatewayAuditCfg.OpsIndexEnabled),
@@ -796,6 +797,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.GatewayAuditEnabled = auditCfg.Enabled
 	result.GatewayAuditInputCaptureMode = auditCfg.InputCaptureMode
 	result.GatewayAuditOutputCaptureMode = auditCfg.OutputCaptureMode
+	result.GatewayAuditInputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(auditCfg.InputMessagePolicy, "all")
 	result.GatewayAuditFileEnabled = auditCfg.FileEnabled
 	result.GatewayAuditFilePath = auditCfg.FilePath
 	result.GatewayAuditOpsIndexEnabled = auditCfg.OpsIndexEnabled

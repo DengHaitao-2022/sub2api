@@ -193,6 +193,7 @@ type SystemSettings struct {
 	GatewayAuditEnabled                         bool     // 是否启用网关请求/响应审计
 	GatewayAuditInputCaptureMode                string   // 输入采集模式：none/hash/preview/full
 	GatewayAuditOutputCaptureMode               string   // 输出采集模式：none/hash/preview/full
+	GatewayAuditInputMessagePolicy              string   // 输入消息采集策略：all/user_messages/last_user_message/metadata_only
 	GatewayAuditFileEnabled                     bool     // 是否写入 JSONL/WAL
 	GatewayAuditFilePath                        string   // JSONL/WAL 文件路径
 	GatewayAuditOpsIndexEnabled                 bool     // 是否写入 ops 审计日志

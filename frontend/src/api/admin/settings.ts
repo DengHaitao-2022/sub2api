@@ -567,6 +567,7 @@ export interface SystemSettings {
   gateway_audit_enabled: boolean;
   gateway_audit_input_capture_mode: string;
   gateway_audit_output_capture_mode: string;
+  gateway_audit_input_message_policy: string;
   gateway_audit_file_enabled: boolean;
   gateway_audit_file_path: string;
   gateway_audit_ops_index_enabled: boolean;
@@ -868,6 +869,7 @@ export interface UpdateSettingsRequest {
   gateway_audit_enabled?: boolean;
   gateway_audit_input_capture_mode?: string;
   gateway_audit_output_capture_mode?: string;
+  gateway_audit_input_message_policy?: string;
   gateway_audit_file_enabled?: boolean;
   gateway_audit_file_path?: string;
   gateway_audit_ops_index_enabled?: boolean;

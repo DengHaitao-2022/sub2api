@@ -314,6 +314,23 @@ func TestSettingService_UpdateSettings_GatewayAuditFullModeClampsBodyLimits(t *t
 	require.Equal(t, strconv.FormatInt(config.MaxGatewayAuditFullOutputBodyBytes, 10), repo.updates[SettingKeyGatewayAuditMaxOutputBodyBytes])
 }
 
+func TestSettingService_UpdateSettings_GatewayAuditInputMessagePolicy(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		GatewayAuditInputMessagePolicy: "last_user_message",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "last_user_message", repo.updates[SettingKeyGatewayAuditInputMessagePolicy])
+
+	err = svc.UpdateSettings(context.Background(), &SystemSettings{
+		GatewayAuditInputMessagePolicy: "invalid",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "all", repo.updates[SettingKeyGatewayAuditInputMessagePolicy])
+}
+
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()

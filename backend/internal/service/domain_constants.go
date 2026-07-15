@@ -455,6 +455,7 @@ const (
 	// Gateway audit runtime/capture configuration
 	SettingKeyGatewayAuditInputCaptureMode                = "gateway_audit_input_capture_mode"
 	SettingKeyGatewayAuditOutputCaptureMode               = "gateway_audit_output_capture_mode"
+	SettingKeyGatewayAuditInputMessagePolicy              = "gateway_audit_input_message_policy"
 	SettingKeyGatewayAuditFileEnabled                     = "gateway_audit_file_enabled"
 	SettingKeyGatewayAuditFilePath                        = "gateway_audit_file_path"
 	SettingKeyGatewayAuditOpsIndexEnabled                 = "gateway_audit_ops_index_enabled"

@@ -78,6 +78,7 @@ func gatewayAuditEnabled(ctx context.Context, cfg config.GatewayAuditConfig, che
 func normalizeConfig(cfg config.GatewayAuditConfig) config.GatewayAuditConfig {
 	cfg.InputCaptureMode = normalizeCaptureMode(cfg.InputCaptureMode)
 	cfg.OutputCaptureMode = normalizeCaptureMode(cfg.OutputCaptureMode)
+	cfg.InputMessagePolicy = normalizeInputMessagePolicy(cfg.InputMessagePolicy)
 	if cfg.SampleRate <= 0 {
 		cfg.SampleRate = 0
 	}

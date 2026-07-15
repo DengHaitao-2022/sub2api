@@ -62,6 +62,19 @@ func normalizeGatewayAuditCaptureModeInput(raw string, fallback string) string {
 	}
 }
 
+func normalizeGatewayAuditInputMessagePolicyInput(raw string, fallback string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "all", "user_messages", "last_user_message", "metadata_only":
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+	switch strings.ToLower(strings.TrimSpace(fallback)) {
+	case "all", "user_messages", "last_user_message", "metadata_only":
+		return strings.ToLower(strings.TrimSpace(fallback))
+	default:
+		return "all"
+	}
+}
+
 // applyGatewayAuditSettingsDTO keeps the admin settings response in sync with
 // the runtime settings model. The GET and PUT handlers both return the same
 // DTO, so centralizing this relatively large field group avoids silently
@@ -75,6 +88,7 @@ func applyGatewayAuditSettingsDTO(payload *dto.SystemSettings, settings *service
 	payload.GatewayAuditEnabled = settings.GatewayAuditEnabled
 	payload.GatewayAuditInputCaptureMode = settings.GatewayAuditInputCaptureMode
 	payload.GatewayAuditOutputCaptureMode = settings.GatewayAuditOutputCaptureMode
+	payload.GatewayAuditInputMessagePolicy = settings.GatewayAuditInputMessagePolicy
 	payload.GatewayAuditFileEnabled = settings.GatewayAuditFileEnabled
 	payload.GatewayAuditFilePath = settings.GatewayAuditFilePath
 	payload.GatewayAuditOpsIndexEnabled = settings.GatewayAuditOpsIndexEnabled

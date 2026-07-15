@@ -401,6 +401,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.GatewayAuditOutputCaptureMode != after.GatewayAuditOutputCaptureMode {
 		changed = append(changed, "gateway_audit_output_capture_mode")
 	}
+	if before.GatewayAuditInputMessagePolicy != after.GatewayAuditInputMessagePolicy {
+		changed = append(changed, "gateway_audit_input_message_policy")
+	}
 	if before.GatewayAuditFileEnabled != after.GatewayAuditFileEnabled {
 		changed = append(changed, "gateway_audit_file_enabled")
 	}

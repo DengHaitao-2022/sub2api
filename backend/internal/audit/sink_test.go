@@ -317,6 +317,18 @@ func TestBuildIndexRecordCapturesAttemptSummary(t *testing.T) {
 	}
 }
 
+func TestBuildIndexRecordIncludesInputMessagePolicyInCaptureMode(t *testing.T) {
+	event := &Event{Timestamp: time.Now(), AuditID: "aud_policy"}
+	record := buildIndexRecord(config.GatewayAuditConfig{
+		InputCaptureMode:   "preview",
+		OutputCaptureMode:  "hash",
+		InputMessagePolicy: "user_messages",
+	}, event, nil)
+	if record.CaptureMode != "preview:user_messages/hash" {
+		t.Fatalf("capture_mode = %q", record.CaptureMode)
+	}
+}
+
 type memorySyncIndexWriter struct {
 	records []*IndexRecord
 }

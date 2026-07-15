@@ -163,19 +163,20 @@ func TestSettingHandler_GetSettings_ReturnsGatewayAuditConfiguration(t *testing.
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{
 		values: map[string]string{
-			service.SettingKeyGatewayAuditEnabled:           "true",
-			service.SettingKeyGatewayAuditInputCaptureMode:  "full",
-			service.SettingKeyGatewayAuditOutputCaptureMode: "hash",
-			service.SettingKeyGatewayAuditFileEnabled:       "false",
-			service.SettingKeyGatewayAuditFilePath:          "/tmp/current-audit.jsonl",
-			service.SettingKeyGatewayAuditIndexEnabled:      "true",
-			service.SettingKeyGatewayAuditMaxInputBodyBytes: "131072",
-			service.SettingKeyGatewayAuditSampleRate:        "0.42",
-			service.SettingKeyGatewayAuditIncludePaths:      `["/v1/messages","/v1/responses"]`,
-			service.SettingKeyGatewayAuditExcludePaths:      `["/health"]`,
-			service.SettingKeyGatewayAuditRedactKeys:        `["authorization","api_key"]`,
-			service.SettingKeyGatewayAuditRetentionDays:     "9",
-			service.SettingKeyRewriteMessageCacheControl:    "true",
+			service.SettingKeyGatewayAuditEnabled:            "true",
+			service.SettingKeyGatewayAuditInputCaptureMode:   "full",
+			service.SettingKeyGatewayAuditOutputCaptureMode:  "hash",
+			service.SettingKeyGatewayAuditInputMessagePolicy: "last_user_message",
+			service.SettingKeyGatewayAuditFileEnabled:        "false",
+			service.SettingKeyGatewayAuditFilePath:           "/tmp/current-audit.jsonl",
+			service.SettingKeyGatewayAuditIndexEnabled:       "true",
+			service.SettingKeyGatewayAuditMaxInputBodyBytes:  "131072",
+			service.SettingKeyGatewayAuditSampleRate:         "0.42",
+			service.SettingKeyGatewayAuditIncludePaths:       `["/v1/messages","/v1/responses"]`,
+			service.SettingKeyGatewayAuditExcludePaths:       `["/health"]`,
+			service.SettingKeyGatewayAuditRedactKeys:         `["authorization","api_key"]`,
+			service.SettingKeyGatewayAuditRetentionDays:      "9",
+			service.SettingKeyRewriteMessageCacheControl:     "true",
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
@@ -195,6 +196,7 @@ func TestSettingHandler_GetSettings_ReturnsGatewayAuditConfiguration(t *testing.
 	require.Equal(t, true, data["gateway_audit_enabled"])
 	require.Equal(t, "full", data["gateway_audit_input_capture_mode"])
 	require.Equal(t, "hash", data["gateway_audit_output_capture_mode"])
+	require.Equal(t, "last_user_message", data["gateway_audit_input_message_policy"])
 	require.Equal(t, false, data["gateway_audit_file_enabled"])
 	require.Equal(t, "/tmp/current-audit.jsonl", data["gateway_audit_file_path"])
 	require.Equal(t, true, data["gateway_audit_index_enabled"])
@@ -219,12 +221,13 @@ func TestSettingHandler_UpdateSettings_ReturnsUpdatedGatewayAuditConfiguration(t
 	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	body := map[string]any{
-		"gateway_audit_enabled":             true,
-		"gateway_audit_input_capture_mode":  "hash",
-		"gateway_audit_output_capture_mode": "full",
-		"gateway_audit_sample_rate":         0.75,
-		"gateway_audit_include_paths":       []string{"/v1/messages"},
-		"gateway_audit_redact_keys":         []string{"authorization"},
+		"gateway_audit_enabled":              true,
+		"gateway_audit_input_capture_mode":   "hash",
+		"gateway_audit_output_capture_mode":  "full",
+		"gateway_audit_input_message_policy": "user_messages",
+		"gateway_audit_sample_rate":          0.75,
+		"gateway_audit_include_paths":        []string{"/v1/messages"},
+		"gateway_audit_redact_keys":          []string{"authorization"},
 	}
 	rawBody, err := json.Marshal(body)
 	require.NoError(t, err)
@@ -244,6 +247,7 @@ func TestSettingHandler_UpdateSettings_ReturnsUpdatedGatewayAuditConfiguration(t
 	require.Equal(t, true, data["gateway_audit_enabled"])
 	require.Equal(t, "hash", data["gateway_audit_input_capture_mode"])
 	require.Equal(t, "full", data["gateway_audit_output_capture_mode"])
+	require.Equal(t, "user_messages", data["gateway_audit_input_message_policy"])
 	require.Equal(t, 0.75, data["gateway_audit_sample_rate"])
 	require.Equal(t, []any{"/v1/messages"}, data["gateway_audit_include_paths"])
 	require.Equal(t, []any{"authorization"}, data["gateway_audit_redact_keys"])
