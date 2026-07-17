@@ -468,8 +468,9 @@ func isOpsNoAvailableAccountError(err error) bool {
 
 type opsCaptureWriter struct {
 	gin.ResponseWriter
-	limit int
-	buf   bytes.Buffer
+	limit    int
+	released bool
+	buf      bytes.Buffer
 }
 
 const opsCaptureWriterLimit = 64 * 1024
@@ -487,6 +488,7 @@ func acquireOpsCaptureWriter(rw gin.ResponseWriter) *opsCaptureWriter {
 	}
 	w.ResponseWriter = rw
 	w.limit = opsCaptureWriterLimit
+	w.released = false
 	w.buf.Reset()
 	return w
 }
@@ -497,19 +499,32 @@ func releaseOpsCaptureWriter(w *opsCaptureWriter) {
 	}
 	w.ResponseWriter = nil
 	w.limit = opsCaptureWriterLimit
+	w.released = true
 	w.buf.Reset()
 	opsCaptureWriterPool.Put(w)
 }
 
 func (w *opsCaptureWriter) Status() int {
+	if w == nil {
+		return 0
+	}
 	if w.ResponseWriter == nil {
+		if w.released {
+			return http.StatusOK
+		}
 		return 0
 	}
 	return w.ResponseWriter.Status()
 }
 
 func (w *opsCaptureWriter) Size() int {
+	if w == nil {
+		return -1
+	}
 	if w.ResponseWriter == nil {
+		if w.released {
+			return 0
+		}
 		return -1
 	}
 	return w.ResponseWriter.Size()
@@ -575,7 +590,7 @@ func (w *opsCaptureWriter) Pusher() http.Pusher {
 
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 	if w == nil || w.ResponseWriter == nil {
-		return 0, http.ErrAbortHandler
+		return 0, nil
 	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
@@ -590,7 +605,7 @@ func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 
 func (w *opsCaptureWriter) WriteString(s string) (int, error) {
 	if w == nil || w.ResponseWriter == nil {
-		return 0, http.ErrAbortHandler
+		return 0, nil
 	}
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
