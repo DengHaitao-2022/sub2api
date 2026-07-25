@@ -10,13 +10,17 @@ import (
 )
 
 func captureGatewayInput(c *gin.Context, protocol, endpoint, model string, stream bool, body []byte) {
+	captureGatewayInputWithContentType(c, protocol, endpoint, model, stream, body, c.GetHeader("Content-Type"))
+}
+
+func captureGatewayInputWithContentType(c *gin.Context, protocol, endpoint, model string, stream bool, body []byte, contentType string) {
 	audit.CaptureInput(c, audit.InputSnapshot{
 		Protocol:    protocol,
 		Endpoint:    endpoint,
 		Model:       model,
 		Stream:      stream,
 		Body:        body,
-		ContentType: c.GetHeader("Content-Type"),
+		ContentType: contentType,
 	})
 }
 
