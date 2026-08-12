@@ -89,6 +89,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	captureGatewayInput(c, "openai", "responses", reqModel, reqStream, body)
 	requestCtx := c.Request.Context()
 	// 定价上下文无条件装配：/v1/responses 是 token 计费端点，声明生图工具的
 	// 混合请求同样按 token 计费（外加图片部分），其 token 利润保护不因请求体
@@ -202,7 +203,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		account := selection.Account
-		setOpsSelectedAccount(c, account.ID, account.Platform)
+		setSelectedAccountContexts(c, account)
 
 		// 4. Acquire account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc
@@ -258,6 +259,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		forwardStart := time.Now()
+
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
 		if shouldUseAntigravityCompat(account) {
@@ -274,11 +277,18 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
 		}
 
+		forwardDurationMs := time.Since(forwardStart).Milliseconds()
+
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
 
 		if err != nil {
+			attemptStatus := c.Writer.Status()
+			if attemptStatus < http.StatusBadRequest {
+				attemptStatus = 0
+			}
+			markGatewayAuditAttemptResult(c, attemptStatus, forwardDurationMs, err)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
@@ -311,6 +321,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			)
 			return
 		}
+		markGatewayAuditAttemptResult(c, c.Writer.Status(), forwardDurationMs, nil)
 
 		// 6. Record usage
 		userAgent := c.GetHeader("User-Agent")

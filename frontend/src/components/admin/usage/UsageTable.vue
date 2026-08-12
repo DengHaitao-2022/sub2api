@@ -269,6 +269,20 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-audit="{ row }">
+          <button
+            v-if="row.audit_available && row.audit_id"
+            class="btn btn-ghost px-2 py-1"
+            title="查看审计"
+            @click="$emit('auditOpen', row.audit_id)"
+          >
+            <Icon name="eye" size="sm" class="text-primary-500" />
+          </button>
+          <span v-else class="text-xs text-gray-400 dark:text-gray-500">
+            {{ auditStatusLabel(row) }}
+          </span>
+        </template>
+
         <template #empty><EmptyState :message="t('usage.noRecords')" /></template>
       </DataTable>
     </div>
@@ -575,6 +589,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits<{
   userClick: [userID: number, email?: string]
+  auditOpen: [auditID: string]
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
 }>()
@@ -687,6 +702,13 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+const auditStatusLabel = (row: AdminUsageLog): string => {
+  if (!row.request_id) return '-'
+  if (row.audit_status === 'no_request_id') return '-'
+  if (row.audit_status === 'captured') return '查看'
+  return '未记录'
 }
 
 // Cost tooltip functions

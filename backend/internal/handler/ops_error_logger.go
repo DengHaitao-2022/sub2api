@@ -518,9 +518,10 @@ func isOpsNoAvailableAccountError(err error) bool {
 
 type opsCaptureWriter struct {
 	gin.ResponseWriter
-	limit int
-	buf   bytes.Buffer
-	ctx   *gin.Context
+	limit    int
+	released bool
+	buf      bytes.Buffer
+	ctx      *gin.Context
 }
 
 const opsCaptureWriterLimit = service.OpsErrorLogQueueBodyMaxBytes
@@ -540,6 +541,7 @@ func acquireOpsCaptureWriter(rw gin.ResponseWriter) *opsCaptureWriter {
 	}
 	w.ResponseWriter = rw
 	w.limit = opsCaptureWriterLimit
+	w.released = false
 	w.buf.Reset()
 	return w
 }
@@ -551,6 +553,7 @@ func releaseOpsCaptureWriter(w *opsCaptureWriter) {
 	w.ResponseWriter = nil
 	w.ctx = nil
 	w.limit = opsCaptureWriterLimit
+	w.released = true
 	if !shouldPoolOpsCaptureWriter(w) {
 		return
 	}
@@ -563,63 +566,75 @@ func shouldPoolOpsCaptureWriter(w *opsCaptureWriter) bool {
 }
 
 func (w *opsCaptureWriter) Status() int {
+	if w == nil {
+		return 0
+	}
 	if w.ResponseWriter == nil {
+		if w.released {
+			return http.StatusOK
+		}
 		return 0
 	}
 	return w.ResponseWriter.Status()
 }
 
 func (w *opsCaptureWriter) Size() int {
+	if w == nil {
+		return -1
+	}
 	if w.ResponseWriter == nil {
+		if w.released {
+			return 0
+		}
 		return -1
 	}
 	return w.ResponseWriter.Size()
 }
 
 func (w *opsCaptureWriter) Written() bool {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return false
 	}
 	return w.ResponseWriter.Written()
 }
 
 func (w *opsCaptureWriter) Header() http.Header {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return http.Header{}
 	}
 	return w.ResponseWriter.Header()
 }
 
 func (w *opsCaptureWriter) WriteHeader(code int) {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return
 	}
 	w.ResponseWriter.WriteHeader(code)
 }
 
 func (w *opsCaptureWriter) WriteHeaderNow() {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return
 	}
 	w.ResponseWriter.WriteHeaderNow()
 }
 
 func (w *opsCaptureWriter) Flush() {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return
 	}
 	w.ResponseWriter.Flush()
 }
 
 func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return nil, nil, errors.New("response writer released")
 	}
 	return w.ResponseWriter.Hijack()
 }
 
 func (w *opsCaptureWriter) CloseNotify() <-chan bool {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		ch := make(chan bool)
 		close(ch)
 		return ch
@@ -628,14 +643,14 @@ func (w *opsCaptureWriter) CloseNotify() <-chan bool {
 }
 
 func (w *opsCaptureWriter) Pusher() http.Pusher {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return nil
 	}
 	return w.ResponseWriter.Pusher()
 }
 
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return 0, nil
 	}
 	if w.shouldCapture() && w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
@@ -650,7 +665,7 @@ func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 }
 
 func (w *opsCaptureWriter) WriteString(s string) (int, error) {
-	if w.ResponseWriter == nil {
+	if w == nil || w.ResponseWriter == nil {
 		return 0, nil
 	}
 	if w.shouldCapture() && w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {

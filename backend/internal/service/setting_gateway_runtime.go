@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"golang.org/x/sync/singleflight"
@@ -53,6 +54,7 @@ const backendModeDBTimeout = 5 * time.Second
 
 // cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
 type cachedGatewayForwardingSettings struct {
+	gatewayAuditEnabled              bool
 	fingerprintUnification           bool
 	metadataPassthrough              bool
 	cchSigning                       bool
@@ -84,6 +86,18 @@ var accountSchedulingThresholdsSF singleflight.Group
 const accountSchedulingThresholdsCacheTTL = 60 * time.Second
 const accountSchedulingThresholdsErrorTTL = 5 * time.Second
 const accountSchedulingThresholdsDBTimeout = 5 * time.Second
+
+type cachedGatewayAuditConfig struct {
+	cfg       config.GatewayAuditConfig
+	expiresAt int64 // unix nano
+	version   int64
+}
+
+var gatewayAuditConfigCacheVersion atomic.Int64
+
+const gatewayAuditConfigCacheTTL = 60 * time.Second
+const gatewayAuditConfigErrorTTL = 5 * time.Second
+const gatewayAuditConfigDBTimeout = 5 * time.Second
 
 // cachedAntigravityUserAgentVersion 缓存 Antigravity UA 版本号（进程内缓存，60s TTL）
 type cachedAntigravityUserAgentVersion struct {
@@ -705,15 +719,15 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
-	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
-	clientDatelineNormalization                                                           bool
-	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
+	audit, fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl, clientDatelineNormalization bool
+	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                                                    string
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return gatewayForwardingSettingsResult{
+				audit:                            cached.gatewayAuditEnabled,
 				fp:                               cached.fingerprintUnification,
 				mp:                               cached.metadataPassthrough,
 				cch:                              cached.cchSigning,
@@ -730,6 +744,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
+					audit:                            cached.gatewayAuditEnabled,
 					fp:                               cached.fingerprintUnification,
 					mp:                               cached.metadataPassthrough,
 					cch:                              cached.cchSigning,
@@ -745,6 +760,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayForwardingDBTimeout)
 		defer cancel()
 		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyGatewayAuditEnabled,
 			SettingKeyEnableFingerprintUnification,
 			SettingKeyEnableMetadataPassthrough,
 			SettingKeyEnableCCHSigning,
@@ -758,6 +774,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
 			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+				gatewayAuditEnabled:              s.defaultGatewayAuditEnabled(),
 				fingerprintUnification:           true,
 				metadataPassthrough:              false,
 				cchSigning:                       false,
@@ -767,7 +784,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				clientDatelineNormalization:      true,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
+			return gatewayForwardingSettingsResult{audit: s.defaultGatewayAuditEnabled(), fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
+		}
+		auditEnabled := s.defaultGatewayAuditEnabled()
+		if v, ok := values[SettingKeyGatewayAuditEnabled]; ok && v != "" {
+			auditEnabled = v == "true"
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -791,6 +812,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			clientDatelineNormalization = v == "true"
 		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+			gatewayAuditEnabled:              auditEnabled,
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
 			cchSigning:                       cch,
@@ -803,6 +825,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
+			audit:                            auditEnabled,
 			fp:                               fp,
 			mp:                               mp,
 			cch:                              cch,
@@ -817,7 +840,268 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true}
+	return gatewayForwardingSettingsResult{audit: s.defaultGatewayAuditEnabled(), fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true}
+}
+
+func (s *SettingService) defaultGatewayAuditEnabled() bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.Audit.Enabled
+}
+
+func normalizeGatewayAuditCaptureMode(raw string, fallback string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "none", "hash", "preview", "full":
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+	switch strings.ToLower(strings.TrimSpace(fallback)) {
+	case "none", "hash", "preview", "full":
+		return strings.ToLower(strings.TrimSpace(fallback))
+	default:
+		return "preview"
+	}
+}
+
+func normalizeGatewayAuditInputMessagePolicy(raw string, fallback string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "all", "user_messages", "last_user_message", "metadata_only":
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+	switch strings.ToLower(strings.TrimSpace(fallback)) {
+	case "all", "user_messages", "last_user_message", "metadata_only":
+		return strings.ToLower(strings.TrimSpace(fallback))
+	default:
+		return "all"
+	}
+}
+
+func normalizeGatewayAuditBodyLimit(value int64, mode string, defaultValue int64, fullMax int64) int64 {
+	if value <= 0 {
+		value = defaultValue
+	}
+	if normalizeGatewayAuditCaptureMode(mode, "preview") == "full" && fullMax > 0 && value > fullMax {
+		return fullMax
+	}
+	return value
+}
+
+func parseStringSliceJSONSetting(raw string, fallback []string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		if fallback == nil {
+			return nil
+		}
+		out := make([]string, len(fallback))
+		copy(out, fallback)
+		return out
+	}
+	var parsed []string
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		if fallback == nil {
+			return nil
+		}
+		out := make([]string, len(fallback))
+		copy(out, fallback)
+		return out
+	}
+	out := make([]string, 0, len(parsed))
+	for _, item := range parsed {
+		if token := strings.TrimSpace(item); token != "" {
+			out = append(out, token)
+		}
+	}
+	return out
+}
+
+func (s *SettingService) mergeGatewayAuditConfigSettings(values map[string]string) config.GatewayAuditConfig {
+	base := config.GatewayAuditConfig{}
+	if s != nil && s.cfg != nil {
+		base = s.cfg.Gateway.Audit
+	}
+	out := base
+	if raw, ok := values[SettingKeyGatewayAuditEnabled]; ok && strings.TrimSpace(raw) != "" {
+		out.Enabled = strings.TrimSpace(raw) == "true"
+	}
+	if raw, ok := values[SettingKeyGatewayAuditInputCaptureMode]; ok {
+		out.InputCaptureMode = normalizeGatewayAuditCaptureMode(raw, base.InputCaptureMode)
+	} else {
+		out.InputCaptureMode = normalizeGatewayAuditCaptureMode(base.InputCaptureMode, "preview")
+	}
+	if raw, ok := values[SettingKeyGatewayAuditOutputCaptureMode]; ok {
+		out.OutputCaptureMode = normalizeGatewayAuditCaptureMode(raw, base.OutputCaptureMode)
+	} else {
+		out.OutputCaptureMode = normalizeGatewayAuditCaptureMode(base.OutputCaptureMode, "preview")
+	}
+	if raw, ok := values[SettingKeyGatewayAuditInputMessagePolicy]; ok {
+		out.InputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(raw, base.InputMessagePolicy)
+	} else {
+		out.InputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(base.InputMessagePolicy, "all")
+	}
+	if raw, ok := values[SettingKeyGatewayAuditFileEnabled]; ok && strings.TrimSpace(raw) != "" {
+		out.FileEnabled = strings.TrimSpace(raw) == "true"
+	}
+	if raw, ok := values[SettingKeyGatewayAuditFilePath]; ok && strings.TrimSpace(raw) != "" {
+		out.FilePath = strings.TrimSpace(raw)
+	}
+	if raw, ok := values[SettingKeyGatewayAuditOpsIndexEnabled]; ok && strings.TrimSpace(raw) != "" {
+		out.OpsIndexEnabled = strings.TrimSpace(raw) == "true"
+	}
+	if raw, ok := values[SettingKeyGatewayAuditIndexEnabled]; ok && strings.TrimSpace(raw) != "" {
+		out.IndexEnabled = strings.TrimSpace(raw) == "true"
+	}
+	if raw, ok := values[SettingKeyGatewayAuditIndexAsyncEnabled]; ok && strings.TrimSpace(raw) != "" {
+		out.IndexAsyncEnabled = strings.TrimSpace(raw) == "true"
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditIndexQueueSize])); err == nil && raw >= 0 {
+		out.IndexQueueSize = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditIndexWorkerCount])); err == nil && raw >= 0 {
+		out.IndexWorkerCount = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditIndexBatchSize])); err == nil && raw >= 0 {
+		out.IndexBatchSize = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditIndexFlushIntervalMs])); err == nil && raw >= 0 {
+		out.IndexFlushIntervalMs = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditIndexWriteTimeoutMs])); err == nil && raw >= 0 {
+		out.IndexWriteTimeoutMs = raw
+	}
+	if raw, ok := values[SettingKeyGatewayAuditBackfillEnabled]; ok && strings.TrimSpace(raw) != "" {
+		out.BackfillEnabled = strings.TrimSpace(raw) == "true"
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditBackfillIntervalMs])); err == nil && raw >= 0 {
+		out.BackfillIntervalMs = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditBackfillBatchSize])); err == nil && raw >= 0 {
+		out.BackfillBatchSize = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditRetentionCleanupIntervalMinutes])); err == nil && raw >= 0 {
+		out.RetentionCleanupIntervalMinutes = raw
+	}
+	if raw, err := strconv.ParseInt(strings.TrimSpace(values[SettingKeyGatewayAuditMaxInputBodyBytes]), 10, 64); err == nil && raw >= 0 {
+		out.MaxInputBodyBytes = raw
+	}
+	if raw, err := strconv.ParseInt(strings.TrimSpace(values[SettingKeyGatewayAuditMaxOutputBodyBytes]), 10, 64); err == nil && raw >= 0 {
+		out.MaxOutputBodyBytes = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditMaxStringValueBytes])); err == nil && raw >= 0 {
+		out.MaxStringValueBytes = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditMaxArrayItems])); err == nil && raw >= 0 {
+		out.MaxArrayItems = raw
+	}
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditMaxObjectDepth])); err == nil && raw >= 0 {
+		out.MaxObjectDepth = raw
+	}
+	if raw, err := strconv.ParseFloat(strings.TrimSpace(values[SettingKeyGatewayAuditSampleRate]), 64); err == nil {
+		if raw < 0 {
+			raw = 0
+		}
+		if raw > 1 {
+			raw = 1
+		}
+		out.SampleRate = raw
+	}
+	out.IncludePaths = parseStringSliceJSONSetting(values[SettingKeyGatewayAuditIncludePaths], base.IncludePaths)
+	out.ExcludePaths = parseStringSliceJSONSetting(values[SettingKeyGatewayAuditExcludePaths], base.ExcludePaths)
+	out.RedactKeys = parseStringSliceJSONSetting(values[SettingKeyGatewayAuditRedactKeys], base.RedactKeys)
+	if raw, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayAuditRetentionDays])); err == nil && raw >= 0 {
+		out.RetentionDays = raw
+	}
+	out.MaxInputBodyBytes = normalizeGatewayAuditBodyLimit(
+		out.MaxInputBodyBytes,
+		out.InputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	out.MaxOutputBodyBytes = normalizeGatewayAuditBodyLimit(
+		out.MaxOutputBodyBytes,
+		out.OutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
+	return out
+}
+
+// IsGatewayAuditEnabled returns the live admin setting for gateway request audit.
+// Missing DB value falls back to config.gateway.audit.enabled for upgrade compatibility.
+func (s *SettingService) IsGatewayAuditEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).audit
+}
+
+func (s *SettingService) GetGatewayAuditConfig(ctx context.Context) config.GatewayAuditConfig {
+	base := config.GatewayAuditConfig{}
+	if s != nil && s.cfg != nil {
+		base = s.cfg.Gateway.Audit
+	}
+	if s == nil || s.settingRepo == nil {
+		return base
+	}
+	currentVersion := gatewayAuditConfigCacheVersion.Load()
+	if cached, ok := s.gatewayAuditConfigCache.Load().(*cachedGatewayAuditConfig); ok && cached != nil {
+		if cached.version == currentVersion && time.Now().UnixNano() < cached.expiresAt {
+			return cached.cfg
+		}
+	}
+	versionAtStart := currentVersion
+	val, _, _ := s.gatewayAuditConfigSF.Do("gateway_audit_config", func() (any, error) {
+		if cached, ok := s.gatewayAuditConfigCache.Load().(*cachedGatewayAuditConfig); ok && cached != nil {
+			if cached.version == gatewayAuditConfigCacheVersion.Load() && time.Now().UnixNano() < cached.expiresAt {
+				return cached.cfg, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayAuditConfigDBTimeout)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyGatewayAuditEnabled,
+			SettingKeyGatewayAuditInputCaptureMode,
+			SettingKeyGatewayAuditOutputCaptureMode,
+			SettingKeyGatewayAuditInputMessagePolicy,
+			SettingKeyGatewayAuditFileEnabled,
+			SettingKeyGatewayAuditFilePath,
+			SettingKeyGatewayAuditOpsIndexEnabled,
+			SettingKeyGatewayAuditIndexEnabled,
+			SettingKeyGatewayAuditIndexAsyncEnabled,
+			SettingKeyGatewayAuditIndexQueueSize,
+			SettingKeyGatewayAuditIndexWorkerCount,
+			SettingKeyGatewayAuditIndexBatchSize,
+			SettingKeyGatewayAuditIndexFlushIntervalMs,
+			SettingKeyGatewayAuditIndexWriteTimeoutMs,
+			SettingKeyGatewayAuditBackfillEnabled,
+			SettingKeyGatewayAuditBackfillIntervalMs,
+			SettingKeyGatewayAuditBackfillBatchSize,
+			SettingKeyGatewayAuditRetentionCleanupIntervalMinutes,
+			SettingKeyGatewayAuditMaxInputBodyBytes,
+			SettingKeyGatewayAuditMaxOutputBodyBytes,
+			SettingKeyGatewayAuditMaxStringValueBytes,
+			SettingKeyGatewayAuditMaxArrayItems,
+			SettingKeyGatewayAuditMaxObjectDepth,
+			SettingKeyGatewayAuditSampleRate,
+			SettingKeyGatewayAuditIncludePaths,
+			SettingKeyGatewayAuditExcludePaths,
+			SettingKeyGatewayAuditRedactKeys,
+			SettingKeyGatewayAuditRetentionDays,
+		})
+		if err != nil {
+			slog.Warn("failed to get gateway audit config", "error", err)
+			s.gatewayAuditConfigCache.Store(&cachedGatewayAuditConfig{
+				cfg:       base,
+				expiresAt: time.Now().Add(gatewayAuditConfigErrorTTL).UnixNano(),
+				version:   versionAtStart,
+			})
+			return base, nil
+		}
+		merged := s.mergeGatewayAuditConfigSettings(values)
+		s.gatewayAuditConfigCache.Store(&cachedGatewayAuditConfig{
+			cfg:       merged,
+			expiresAt: time.Now().Add(gatewayAuditConfigCacheTTL).UnixNano(),
+			version:   versionAtStart,
+		})
+		return merged, nil
+	})
+	if cfg, ok := val.(config.GatewayAuditConfig); ok {
+		return cfg
+	}
+	return base
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.

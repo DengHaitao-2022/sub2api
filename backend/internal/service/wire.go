@@ -7,6 +7,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/audit"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -89,6 +90,19 @@ func ProvideAuthService(
 	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetAliyunCaptchaService(aliyunCaptchaService)
 	return svc
+}
+
+func ProvideGatewayAuditRuntime(repo GatewayAuditRepository, cfg *config.Config, settingService *SettingService) *audit.Runtime {
+	if cfg == nil || repo == nil {
+		return nil
+	}
+	auditCfg := cfg.Gateway.Audit
+	if settingService != nil {
+		auditCfg = settingService.GetGatewayAuditConfig(context.Background())
+	}
+	rt := audit.NewRuntime(auditCfg, repo)
+	rt.Start()
+	return rt
 }
 
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
@@ -760,6 +774,8 @@ var ProviderSet = wire.NewSet(
 	NewRedeemService,
 	NewPromoService,
 	NewUsageService,
+	NewGatewayAuditService,
+	ProvideGatewayAuditRuntime,
 	NewDashboardService,
 	ProvidePricingService,
 	NewBillingService,

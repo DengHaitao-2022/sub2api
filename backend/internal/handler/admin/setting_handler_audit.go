@@ -449,6 +449,90 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.CustomEndpoints != after.CustomEndpoints {
 		changed = append(changed, "custom_endpoints")
 	}
+	if before.GatewayAuditEnabled != after.GatewayAuditEnabled {
+		changed = append(changed, "gateway_audit_enabled")
+	}
+	if before.GatewayAuditInputCaptureMode != after.GatewayAuditInputCaptureMode {
+		changed = append(changed, "gateway_audit_input_capture_mode")
+	}
+	if before.GatewayAuditOutputCaptureMode != after.GatewayAuditOutputCaptureMode {
+		changed = append(changed, "gateway_audit_output_capture_mode")
+	}
+	if before.GatewayAuditInputMessagePolicy != after.GatewayAuditInputMessagePolicy {
+		changed = append(changed, "gateway_audit_input_message_policy")
+	}
+	if before.GatewayAuditFileEnabled != after.GatewayAuditFileEnabled {
+		changed = append(changed, "gateway_audit_file_enabled")
+	}
+	if before.GatewayAuditFilePath != after.GatewayAuditFilePath {
+		changed = append(changed, "gateway_audit_file_path")
+	}
+	if before.GatewayAuditOpsIndexEnabled != after.GatewayAuditOpsIndexEnabled {
+		changed = append(changed, "gateway_audit_ops_index_enabled")
+	}
+	if before.GatewayAuditIndexEnabled != after.GatewayAuditIndexEnabled {
+		changed = append(changed, "gateway_audit_index_enabled")
+	}
+	if before.GatewayAuditIndexAsyncEnabled != after.GatewayAuditIndexAsyncEnabled {
+		changed = append(changed, "gateway_audit_index_async_enabled")
+	}
+	if before.GatewayAuditIndexQueueSize != after.GatewayAuditIndexQueueSize {
+		changed = append(changed, "gateway_audit_index_queue_size")
+	}
+	if before.GatewayAuditIndexWorkerCount != after.GatewayAuditIndexWorkerCount {
+		changed = append(changed, "gateway_audit_index_worker_count")
+	}
+	if before.GatewayAuditIndexBatchSize != after.GatewayAuditIndexBatchSize {
+		changed = append(changed, "gateway_audit_index_batch_size")
+	}
+	if before.GatewayAuditIndexFlushIntervalMs != after.GatewayAuditIndexFlushIntervalMs {
+		changed = append(changed, "gateway_audit_index_flush_interval_ms")
+	}
+	if before.GatewayAuditIndexWriteTimeoutMs != after.GatewayAuditIndexWriteTimeoutMs {
+		changed = append(changed, "gateway_audit_index_write_timeout_ms")
+	}
+	if before.GatewayAuditBackfillEnabled != after.GatewayAuditBackfillEnabled {
+		changed = append(changed, "gateway_audit_backfill_enabled")
+	}
+	if before.GatewayAuditBackfillIntervalMs != after.GatewayAuditBackfillIntervalMs {
+		changed = append(changed, "gateway_audit_backfill_interval_ms")
+	}
+	if before.GatewayAuditBackfillBatchSize != after.GatewayAuditBackfillBatchSize {
+		changed = append(changed, "gateway_audit_backfill_batch_size")
+	}
+	if before.GatewayAuditRetentionCleanupIntervalMinutes != after.GatewayAuditRetentionCleanupIntervalMinutes {
+		changed = append(changed, "gateway_audit_retention_cleanup_interval_minutes")
+	}
+	if before.GatewayAuditMaxInputBodyBytes != after.GatewayAuditMaxInputBodyBytes {
+		changed = append(changed, "gateway_audit_max_input_body_bytes")
+	}
+	if before.GatewayAuditMaxOutputBodyBytes != after.GatewayAuditMaxOutputBodyBytes {
+		changed = append(changed, "gateway_audit_max_output_body_bytes")
+	}
+	if before.GatewayAuditMaxStringValueBytes != after.GatewayAuditMaxStringValueBytes {
+		changed = append(changed, "gateway_audit_max_string_value_bytes")
+	}
+	if before.GatewayAuditMaxArrayItems != after.GatewayAuditMaxArrayItems {
+		changed = append(changed, "gateway_audit_max_array_items")
+	}
+	if before.GatewayAuditMaxObjectDepth != after.GatewayAuditMaxObjectDepth {
+		changed = append(changed, "gateway_audit_max_object_depth")
+	}
+	if before.GatewayAuditSampleRate != after.GatewayAuditSampleRate {
+		changed = append(changed, "gateway_audit_sample_rate")
+	}
+	if !equalStringSlice(before.GatewayAuditIncludePaths, after.GatewayAuditIncludePaths) {
+		changed = append(changed, "gateway_audit_include_paths")
+	}
+	if !equalStringSlice(before.GatewayAuditExcludePaths, after.GatewayAuditExcludePaths) {
+		changed = append(changed, "gateway_audit_exclude_paths")
+	}
+	if !equalStringSlice(before.GatewayAuditRedactKeys, after.GatewayAuditRedactKeys) {
+		changed = append(changed, "gateway_audit_redact_keys")
+	}
+	if before.GatewayAuditRetentionDays != after.GatewayAuditRetentionDays {
+		changed = append(changed, "gateway_audit_retention_days")
+	}
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")
 	}

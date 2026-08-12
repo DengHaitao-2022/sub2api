@@ -397,6 +397,40 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
 
+func TestSettingService_UpdateSettings_GatewayAuditFullModeClampsBodyLimits(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		GatewayAuditInputCaptureMode:   "full",
+		GatewayAuditOutputCaptureMode:  "full",
+		GatewayAuditMaxInputBodyBytes:  config.MaxGatewayAuditFullInputBodyBytes + 1024,
+		GatewayAuditMaxOutputBodyBytes: config.MaxGatewayAuditFullOutputBodyBytes + 1024,
+		GatewayAuditIncludePaths:       []string{"/v1/*"},
+		GatewayAuditExcludePaths:       []string{"/health"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, strconv.FormatInt(config.MaxGatewayAuditFullInputBodyBytes, 10), repo.updates[SettingKeyGatewayAuditMaxInputBodyBytes])
+	require.Equal(t, strconv.FormatInt(config.MaxGatewayAuditFullOutputBodyBytes, 10), repo.updates[SettingKeyGatewayAuditMaxOutputBodyBytes])
+}
+
+func TestSettingService_UpdateSettings_GatewayAuditInputMessagePolicy(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		GatewayAuditInputMessagePolicy: "last_user_message",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "last_user_message", repo.updates[SettingKeyGatewayAuditInputMessagePolicy])
+
+	err = svc.UpdateSettings(context.Background(), &SystemSettings{
+		GatewayAuditInputMessagePolicy: "invalid",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "all", repo.updates[SettingKeyGatewayAuditInputMessagePolicy])
+}
+
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 	defer resetOpenAIAdvancedSchedulerSettingCacheForTest()

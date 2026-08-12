@@ -536,7 +536,7 @@ function buildQuery() {
 async function fetchLogs() {
   loading.value = true
   try {
-    const res = await adminAPI.audit.list(buildQuery())
+    const res = await adminAPI.operationAudit.list(buildQuery())
     logs.value = res.items
     total.value = res.total
   } catch (err: any) {
@@ -586,7 +586,7 @@ async function openDetail(id: number) {
   detailLoading.value = true
   detail.value = null
   try {
-    detail.value = await adminAPI.audit.get(id)
+    detail.value = await adminAPI.operationAudit.get(id)
   } catch (err: any) {
     appStore.showError(err?.message || t('admin.audit.loadFailed'))
     detailVisible.value = false
@@ -645,7 +645,7 @@ async function submitClear() {
   if (clearTotpCode.value.length !== 6) return
   clearing.value = true
   try {
-    const res = await adminAPI.audit.clear(clearTotpCode.value)
+    const res = await adminAPI.operationAudit.clear(clearTotpCode.value)
     clearTotpVisible.value = false
     appStore.showSuccess(t('admin.audit.clearConfirm.success', { count: res.deleted }))
     search()

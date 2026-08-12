@@ -44,6 +44,34 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	gatewayAuditCfg := config.GatewayAuditConfig{}
+	if s != nil && s.cfg != nil {
+		gatewayAuditCfg = s.cfg.Gateway.Audit
+	}
+	gatewayAuditMaxInputBodyBytes := normalizeGatewayAuditBodyLimit(
+		gatewayAuditCfg.MaxInputBodyBytes,
+		gatewayAuditCfg.InputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	gatewayAuditMaxOutputBodyBytes := normalizeGatewayAuditBodyLimit(
+		gatewayAuditCfg.MaxOutputBodyBytes,
+		gatewayAuditCfg.OutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
+	gatewayAuditIncludePathsJSON, err := json.Marshal(gatewayAuditCfg.IncludePaths)
+	if err != nil {
+		return err
+	}
+	gatewayAuditExcludePathsJSON, err := json.Marshal(gatewayAuditCfg.ExcludePaths)
+	if err != nil {
+		return err
+	}
+	gatewayAuditRedactKeysJSON, err := json.Marshal(gatewayAuditCfg.RedactKeys)
+	if err != nil {
+		return err
+	}
 	forwardedClientIPHeaders := []string{}
 	if s != nil && s.cfg != nil {
 		forwardedClientIPHeaders = s.cfg.ForwardedClientIPSettings().Headers
@@ -229,6 +257,34 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:                        "false",
+		SettingKeyGatewayAuditEnabled:                                strconv.FormatBool(s.defaultGatewayAuditEnabled()),
+		SettingKeyGatewayAuditInputCaptureMode:                       normalizeGatewayAuditCaptureMode(gatewayAuditCfg.InputCaptureMode, "preview"),
+		SettingKeyGatewayAuditOutputCaptureMode:                      normalizeGatewayAuditCaptureMode(gatewayAuditCfg.OutputCaptureMode, "preview"),
+		SettingKeyGatewayAuditInputMessagePolicy:                     normalizeGatewayAuditInputMessagePolicy(gatewayAuditCfg.InputMessagePolicy, "all"),
+		SettingKeyGatewayAuditFileEnabled:                            strconv.FormatBool(gatewayAuditCfg.FileEnabled),
+		SettingKeyGatewayAuditFilePath:                               strings.TrimSpace(gatewayAuditCfg.FilePath),
+		SettingKeyGatewayAuditOpsIndexEnabled:                        strconv.FormatBool(gatewayAuditCfg.OpsIndexEnabled),
+		SettingKeyGatewayAuditIndexEnabled:                           strconv.FormatBool(gatewayAuditCfg.IndexEnabled),
+		SettingKeyGatewayAuditIndexAsyncEnabled:                      strconv.FormatBool(gatewayAuditCfg.IndexAsyncEnabled),
+		SettingKeyGatewayAuditIndexQueueSize:                         strconv.Itoa(gatewayAuditCfg.IndexQueueSize),
+		SettingKeyGatewayAuditIndexWorkerCount:                       strconv.Itoa(gatewayAuditCfg.IndexWorkerCount),
+		SettingKeyGatewayAuditIndexBatchSize:                         strconv.Itoa(gatewayAuditCfg.IndexBatchSize),
+		SettingKeyGatewayAuditIndexFlushIntervalMs:                   strconv.Itoa(gatewayAuditCfg.IndexFlushIntervalMs),
+		SettingKeyGatewayAuditIndexWriteTimeoutMs:                    strconv.Itoa(gatewayAuditCfg.IndexWriteTimeoutMs),
+		SettingKeyGatewayAuditBackfillEnabled:                        strconv.FormatBool(gatewayAuditCfg.BackfillEnabled),
+		SettingKeyGatewayAuditBackfillIntervalMs:                     strconv.Itoa(gatewayAuditCfg.BackfillIntervalMs),
+		SettingKeyGatewayAuditBackfillBatchSize:                      strconv.Itoa(gatewayAuditCfg.BackfillBatchSize),
+		SettingKeyGatewayAuditRetentionCleanupIntervalMinutes:        strconv.Itoa(gatewayAuditCfg.RetentionCleanupIntervalMinutes),
+		SettingKeyGatewayAuditMaxInputBodyBytes:                      strconv.FormatInt(gatewayAuditMaxInputBodyBytes, 10),
+		SettingKeyGatewayAuditMaxOutputBodyBytes:                     strconv.FormatInt(gatewayAuditMaxOutputBodyBytes, 10),
+		SettingKeyGatewayAuditMaxStringValueBytes:                    strconv.Itoa(gatewayAuditCfg.MaxStringValueBytes),
+		SettingKeyGatewayAuditMaxArrayItems:                          strconv.Itoa(gatewayAuditCfg.MaxArrayItems),
+		SettingKeyGatewayAuditMaxObjectDepth:                         strconv.Itoa(gatewayAuditCfg.MaxObjectDepth),
+		SettingKeyGatewayAuditSampleRate:                             strconv.FormatFloat(gatewayAuditCfg.SampleRate, 'f', -1, 64),
+		SettingKeyGatewayAuditIncludePaths:                           string(gatewayAuditIncludePathsJSON),
+		SettingKeyGatewayAuditExcludePaths:                           string(gatewayAuditExcludePathsJSON),
+		SettingKeyGatewayAuditRedactKeys:                             string(gatewayAuditRedactKeysJSON),
+		SettingKeyGatewayAuditRetentionDays:                          strconv.Itoa(gatewayAuditCfg.RetentionDays),
 		SettingKeyOpenAILowUpstreamRatePriorityEnabled:               "false",
 		SettingKeyOpenAIOAuthSchedulingRateMultiplier:                "1",
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
@@ -840,6 +896,35 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
 	// cch_signing=false, claude_oauth_system_prompt_injection=true)
+	auditCfg := s.mergeGatewayAuditConfigSettings(settings)
+	result.GatewayAuditEnabled = auditCfg.Enabled
+	result.GatewayAuditInputCaptureMode = auditCfg.InputCaptureMode
+	result.GatewayAuditOutputCaptureMode = auditCfg.OutputCaptureMode
+	result.GatewayAuditInputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(auditCfg.InputMessagePolicy, "all")
+	result.GatewayAuditFileEnabled = auditCfg.FileEnabled
+	result.GatewayAuditFilePath = auditCfg.FilePath
+	result.GatewayAuditOpsIndexEnabled = auditCfg.OpsIndexEnabled
+	result.GatewayAuditIndexEnabled = auditCfg.IndexEnabled
+	result.GatewayAuditIndexAsyncEnabled = auditCfg.IndexAsyncEnabled
+	result.GatewayAuditIndexQueueSize = auditCfg.IndexQueueSize
+	result.GatewayAuditIndexWorkerCount = auditCfg.IndexWorkerCount
+	result.GatewayAuditIndexBatchSize = auditCfg.IndexBatchSize
+	result.GatewayAuditIndexFlushIntervalMs = auditCfg.IndexFlushIntervalMs
+	result.GatewayAuditIndexWriteTimeoutMs = auditCfg.IndexWriteTimeoutMs
+	result.GatewayAuditBackfillEnabled = auditCfg.BackfillEnabled
+	result.GatewayAuditBackfillIntervalMs = auditCfg.BackfillIntervalMs
+	result.GatewayAuditBackfillBatchSize = auditCfg.BackfillBatchSize
+	result.GatewayAuditRetentionCleanupIntervalMinutes = auditCfg.RetentionCleanupIntervalMinutes
+	result.GatewayAuditMaxInputBodyBytes = auditCfg.MaxInputBodyBytes
+	result.GatewayAuditMaxOutputBodyBytes = auditCfg.MaxOutputBodyBytes
+	result.GatewayAuditMaxStringValueBytes = auditCfg.MaxStringValueBytes
+	result.GatewayAuditMaxArrayItems = auditCfg.MaxArrayItems
+	result.GatewayAuditMaxObjectDepth = auditCfg.MaxObjectDepth
+	result.GatewayAuditSampleRate = auditCfg.SampleRate
+	result.GatewayAuditIncludePaths = append([]string(nil), auditCfg.IncludePaths...)
+	result.GatewayAuditExcludePaths = append([]string(nil), auditCfg.ExcludePaths...)
+	result.GatewayAuditRedactKeys = append([]string(nil), auditCfg.RedactKeys...)
+	result.GatewayAuditRetentionDays = auditCfg.RetentionDays
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {

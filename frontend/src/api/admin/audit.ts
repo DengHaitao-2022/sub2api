@@ -1,82 +1,251 @@
-/**
- * Admin operation audit log API.
- *
- * The audit log is admin-only (not exposed to end users). It records
- * management-plane operations with masked header credentials and redacted
- * request bodies. Entries cannot be deleted individually; the whole log can
- * only be cleared with a fresh TOTP verification.
- */
-
 import { apiClient } from '../client'
 import type { PaginatedResponse } from '@/types'
 
-export interface AuditLog {
-  id: number
+export interface GatewayAuditIndex {
+  audit_id: string
+  request_id?: string
+  client_request_id?: string
+  user_id?: number | null
+  api_key_id?: number | null
+  account_id?: number | null
+  group_id?: number | null
+  platform?: string
+  model?: string
+  inbound_endpoint?: string
+  upstream_endpoint?: string
+  method?: string
+  path?: string
+  status_code?: number
+  error_type?: string
+  input_hash?: string
+  output_hash?: string
+  input_size: number
+  output_size: number
+  input_truncated: boolean
+  output_truncated: boolean
+  duration_ms: number
+  time_to_first_token_ms: number
+  attempt_count: number
+  has_failover: boolean
+  first_upstream_status_code?: number
+  final_upstream_status_code?: number
+  capture_mode?: string
+  sampled: boolean
+  file_path?: string
+  file_offset?: number
+  line_bytes?: number
   created_at: string
-  actor_user_id?: number
-  actor_email: string
-  actor_role: string
-  auth_method: string
-  credential_masked: string
-  action: string
-  method: string
-  path: string
-  request_id: string
-  client_ip: string
-  user_agent: string
-  request_body?: string
-  status_code: number
-  latency_ms: number
-  extra?: Record<string, any>
 }
 
-export interface AuditLogQuery {
+export interface GatewayAuditBodyRecord {
+  sha256?: string
+  size_bytes: number
+  truncated: boolean
+  content_type?: string
+  body?: unknown
+}
+
+export interface GatewayAuditEvent {
+  ts: string
+  event: string
+  audit_id?: string
+  request_id?: string
+  client_request_id?: string
+  method?: string
+  path?: string
+  inbound_endpoint?: string
+  client_ip?: string
+  user_agent?: string
+  user_id?: number
+  api_key_id?: number
+  group_id?: number
+  platform?: string
+  model?: string
+  stream?: boolean
+  account_id?: number
+  account_name?: string
+  account_platform?: string
+  upstream_endpoint?: string
+  attempts?: GatewayAuditAttempt[]
+  input?: GatewayAuditBodyRecord
+  output?: GatewayAuditBodyRecord
+  status_code?: number
+  duration_ms?: number
+  time_to_first_token_ms?: number
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+  }
+  error_type?: string
+  error_message?: string
+}
+
+export interface GatewayAuditAttempt {
+  attempt: number
+  account_id?: number
+  account_name?: string
+  platform?: string
+  upstream_endpoint?: string
+  selected_at_ms?: number
+  status_code?: number
+  duration_ms?: number
+  error_type?: string
+  error_message?: string
+  result?: string
+}
+
+export interface GatewayAuditDetail {
+  index: GatewayAuditIndex
+  event?: GatewayAuditEvent
+}
+
+export interface GatewayAuditQueryParams {
   page?: number
   page_size?: number
-  start_time?: string
-  end_time?: string
-  actor_user_id?: number
-  actor_email?: string
-  auth_method?: string
-  action?: string
-  method?: string
-  client_ip?: string
-  success?: string
-  q?: string
+  start_date?: string
+  end_date?: string
+  request_id?: string
+  client_request_id?: string
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  group_id?: number
+  model?: string
+  platform?: string
+  status_code?: number
+  error_type?: string
+  path?: string
+  inbound_endpoint?: string
+  upstream_endpoint?: string
+  has_input?: boolean
+  has_output?: boolean
+  only_errors?: boolean
 }
 
-export type AuditLogListResponse = PaginatedResponse<AuditLog>
+export interface GatewayAuditStats {
+  total: number
+  success: number
+  errors: number
+  error_rate: number
+  input_captured: number
+  output_captured: number
+  input_truncated: number
+  output_truncated: number
+  avg_duration_ms: number
+  max_duration_ms: number
+  avg_first_token_ms: number
+  max_first_token_ms: number
+}
 
-/**
- * List audit logs (paginated, filterable).
- */
-export async function list(params: AuditLogQuery): Promise<AuditLogListResponse> {
-  const { data } = await apiClient.get('/admin/audit-logs', { params })
+export interface GatewayAuditHealth {
+  indexed_total: number
+  last_indexed_at?: string
+  oldest_indexed_at?: string
+  recent_24h: number
+  errors_24h: number
+  last_jsonl_file_path?: string
+  last_jsonl_file_exists: boolean
+  last_jsonl_file_size?: number
+  metrics?: {
+    audit_jsonl_write_failed_total: number
+    audit_index_queue_size: number
+    audit_index_queue_full_total: number
+    audit_index_batch_flush_total: number
+    audit_index_batch_failed_total: number
+    audit_backfill_lag_seconds: number
+    audit_backfill_indexed_total: number
+  }
+  runtime?: {
+    started: boolean
+    enabled: boolean
+    index_enabled: boolean
+    index_async_enabled: boolean
+    dispatcher_enabled: boolean
+    worker_enabled: boolean
+    backfill_enabled: boolean
+    retention_enabled: boolean
+    file_path?: string
+    worker_count: number
+    queue_capacity: number
+    queue_size: number
+    batch_size: number
+    flush_interval_ms: number
+    write_timeout_ms: number
+    backfill_interval_ms: number
+    backfill_batch_size: number
+    retention_cleanup_interval_minutes: number
+  }
+}
+
+export interface GatewayAuditAccessLog {
+  id: number
+  operator_id: number
+  audit_id: string
+  action: string
+  viewed_fields: string[]
+  ip_address?: string
+  user_agent?: string
+  created_at: string
+}
+
+export async function listAudit(
+  params: GatewayAuditQueryParams,
+  options?: { signal?: AbortSignal }
+): Promise<PaginatedResponse<GatewayAuditIndex>> {
+  const { data } = await apiClient.get<PaginatedResponse<GatewayAuditIndex>>('/admin/audit', {
+    params,
+    signal: options?.signal
+  })
   return data
 }
 
-/**
- * Get a single audit log entry (includes the redacted request body).
- */
-export async function get(id: number): Promise<AuditLog> {
-  const { data } = await apiClient.get(`/admin/audit-logs/${id}`)
+export async function getAuditDetail(auditId: string): Promise<GatewayAuditDetail> {
+  const { data } = await apiClient.get<GatewayAuditDetail>(`/admin/audit/${auditId}`)
   return data
 }
 
-/**
- * Clear all audit logs. Requires a fresh TOTP code (verified server-side);
- * unavailable when 2FA is not enabled for the operator.
- * @param totpCode - current 6-digit TOTP code
- */
-export async function clear(totpCode: string): Promise<{ deleted: number }> {
-  const { data } = await apiClient.post('/admin/audit-logs/clear', { totp_code: totpCode })
+export async function getAuditStats(params: GatewayAuditQueryParams): Promise<GatewayAuditStats> {
+  const { data } = await apiClient.get<GatewayAuditStats>('/admin/audit/stats', { params })
   return data
 }
 
-export const auditAPI = {
-  list,
-  get,
-  clear
+export async function getAuditHealth(): Promise<GatewayAuditHealth> {
+  const { data } = await apiClient.get<GatewayAuditHealth>('/admin/audit/health')
+  return data
 }
 
-export default auditAPI
+export async function listAuditAccessLogs(params?: {
+  audit_id?: string
+  limit?: number
+}): Promise<GatewayAuditAccessLog[]> {
+  const { data } = await apiClient.get<GatewayAuditAccessLog[]>('/admin/audit/access-logs', { params })
+  return data
+}
+
+export async function exportAudit(params: GatewayAuditQueryParams): Promise<Blob> {
+  const { data } = await apiClient.post<Blob>('/admin/audit/export', null, {
+    params,
+    responseType: 'blob'
+  })
+  return data
+}
+
+export async function getAuditByRequest(params: {
+  request_id: string
+  api_key_id?: number
+}): Promise<GatewayAuditIndex> {
+  const { data } = await apiClient.get<GatewayAuditIndex>('/admin/audit/by-request', { params })
+  return data
+}
+
+export const adminAuditAPI = {
+  list: listAudit,
+  stats: getAuditStats,
+  health: getAuditHealth,
+  accessLogs: listAuditAccessLogs,
+  export: exportAudit,
+  getDetail: getAuditDetail,
+  getByRequest: getAuditByRequest
+}
+
+export default adminAuditAPI

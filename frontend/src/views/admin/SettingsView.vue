@@ -5219,6 +5219,349 @@
                     {{ t("admin.settings.gatewayForwarding.grokDefaultBaseURLModeHint") }}
                   </p>
                 </div>
+              <!-- Gateway Audit -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.gatewayAudit") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.gatewayForwarding.gatewayAuditHint")
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.gateway_audit_enabled" />
+              </div>
+
+              <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                <div class="mb-4 flex flex-wrap items-center gap-2">
+                  <span class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                    {{ t("admin.settings.gatewayForwarding.gatewayAuditConfigTitle") }}
+                  </span>
+                  <span class="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                    {{ t("admin.settings.gatewayForwarding.gatewayAuditRuntimeHint") }}
+                  </span>
+                </div>
+
+                <div class="space-y-5">
+                  <div>
+                    <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.gatewayAuditCaptureSection") }}
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditInputCaptureMode") }}
+                        </label>
+                        <select v-model="form.gateway_audit_input_capture_mode" class="input">
+                          <option
+                            v-for="option in gatewayAuditCaptureModeOptions"
+                            :key="`input-${option.value}`"
+                            :value="option.value"
+                          >
+                            {{ option.label }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditOutputCaptureMode") }}
+                        </label>
+                        <select v-model="form.gateway_audit_output_capture_mode" class="input">
+                          <option
+                            v-for="option in gatewayAuditCaptureModeOptions"
+                            :key="`output-${option.value}`"
+                            :value="option.value"
+                          >
+                            {{ option.label }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditInputMessagePolicy") }}
+                        </label>
+                        <select v-model="form.gateway_audit_input_message_policy" class="input">
+                          <option
+                            v-for="option in gatewayAuditInputMessagePolicyOptions"
+                            :key="`input-policy-${option.value}`"
+                            :value="option.value"
+                          >
+                            {{ option.label }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditSampleRate") }}
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_sample_rate"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          class="input"
+                        />
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditRetentionDays") }}
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_retention_days"
+                          type="number"
+                          min="0"
+                          class="input"
+                        />
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditMaxInputBodyBytes") }}
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_max_input_body_bytes"
+                          type="number"
+                          min="0"
+                          step="1024"
+                          class="input"
+                        />
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditMaxOutputBodyBytes") }}
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_max_output_body_bytes"
+                          type="number"
+                          min="0"
+                          step="1024"
+                          class="input"
+                        />
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditMaxStringValueBytes") }}
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_max_string_value_bytes"
+                          type="number"
+                          min="0"
+                          class="input"
+                        />
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditMaxArrayItems") }}
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_max_array_items"
+                          type="number"
+                          min="0"
+                          class="input"
+                        />
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditMaxObjectDepth") }}
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_max_object_depth"
+                          type="number"
+                          min="0"
+                          class="input"
+                        />
+                      </div>
+                    </div>
+                    <div
+                      v-if="gatewayAuditFullCaptureSelected"
+                      class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.gatewayAuditFullCaptureWarning") }}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.gatewayAuditPipelineSection") }}
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.gatewayAuditFileEnabled") }}</span>
+                        <Toggle v-model="form.gateway_audit_file_enabled" />
+                      </div>
+                      <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.gatewayAuditOpsIndexEnabled") }}</span>
+                        <Toggle v-model="form.gateway_audit_ops_index_enabled" />
+                      </div>
+                      <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.gatewayAuditIndexEnabled") }}</span>
+                        <Toggle v-model="form.gateway_audit_index_enabled" />
+                      </div>
+                      <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.gatewayAuditIndexAsyncEnabled") }}</span>
+                        <Toggle v-model="form.gateway_audit_index_async_enabled" />
+                      </div>
+                      <div class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-700">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditBackfillEnabled") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </span>
+                        <Toggle v-model="form.gateway_audit_backfill_enabled" />
+                      </div>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      <div class="xl:col-span-3">
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditFilePath") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input
+                          v-model="form.gateway_audit_file_path"
+                          type="text"
+                          class="input font-mono text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexQueueSize") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input v-model.number="form.gateway_audit_index_queue_size" type="number" min="0" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexWorkerCount") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input v-model.number="form.gateway_audit_index_worker_count" type="number" min="0" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexBatchSize") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input v-model.number="form.gateway_audit_index_batch_size" type="number" min="0" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexFlushIntervalMs") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input v-model.number="form.gateway_audit_index_flush_interval_ms" type="number" min="0" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditIndexWriteTimeoutMs") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input v-model.number="form.gateway_audit_index_write_timeout_ms" type="number" min="0" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditBackfillIntervalMs") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input v-model.number="form.gateway_audit_backfill_interval_ms" type="number" min="0" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditBackfillBatchSize") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input v-model.number="form.gateway_audit_backfill_batch_size" type="number" min="0" class="input" />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditRetentionCleanupIntervalMinutes") }}
+                          <span class="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {{ t("admin.settings.gatewayForwarding.gatewayAuditRestartRequired") }}
+                          </span>
+                        </label>
+                        <input
+                          v-model.number="form.gateway_audit_retention_cleanup_interval_minutes"
+                          type="number"
+                          min="0"
+                          class="input"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.gatewayAuditFilterSection") }}
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditIncludePaths") }}
+                        </label>
+                        <textarea
+                          v-model="gatewayAuditIncludePathsText"
+                          rows="7"
+                          class="input w-full resize-y font-mono text-xs leading-5"
+                          :placeholder="t('admin.settings.gatewayForwarding.gatewayAuditListPlaceholder')"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditExcludePaths") }}
+                        </label>
+                        <textarea
+                          v-model="gatewayAuditExcludePathsText"
+                          rows="7"
+                          class="input w-full resize-y font-mono text-xs leading-5"
+                          :placeholder="t('admin.settings.gatewayForwarding.gatewayAuditListPlaceholder')"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.gatewayAuditRedactKeys") }}
+                        </label>
+                        <textarea
+                          v-model="gatewayAuditRedactKeysText"
+                          rows="7"
+                          class="input w-full resize-y font-mono text-xs leading-5"
+                          :placeholder="t('admin.settings.gatewayForwarding.gatewayAuditListPlaceholder')"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <!-- Fingerprint Unification -->
               <div class="flex items-center justify-between">
@@ -9650,6 +9993,68 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_previous_response: "",
   openai_advanced_scheduler_weight_session_sticky: "",
   // Gateway forwarding behavior
+  gateway_audit_enabled: false,
+  gateway_audit_input_capture_mode: "preview",
+  gateway_audit_output_capture_mode: "preview",
+  gateway_audit_input_message_policy: "all",
+  gateway_audit_file_enabled: true,
+  gateway_audit_file_path: "/app/data/audit/audit.jsonl",
+  gateway_audit_ops_index_enabled: true,
+  gateway_audit_index_enabled: true,
+  gateway_audit_index_async_enabled: true,
+  gateway_audit_index_queue_size: 10000,
+  gateway_audit_index_worker_count: 2,
+  gateway_audit_index_batch_size: 200,
+  gateway_audit_index_flush_interval_ms: 200,
+  gateway_audit_index_write_timeout_ms: 2000,
+  gateway_audit_backfill_enabled: true,
+  gateway_audit_backfill_interval_ms: 30000,
+  gateway_audit_backfill_batch_size: 500,
+  gateway_audit_retention_cleanup_interval_minutes: 60,
+  gateway_audit_max_input_body_bytes: 64 * 1024,
+  gateway_audit_max_output_body_bytes: 128 * 1024,
+  gateway_audit_max_string_value_bytes: 8 * 1024,
+  gateway_audit_max_array_items: 50,
+  gateway_audit_max_object_depth: 16,
+  gateway_audit_sample_rate: 1,
+  gateway_audit_include_paths: [
+    "/v1/messages",
+    "/v1beta/models",
+    "/v1/responses",
+    "/v1/live",
+    "/responses",
+    "/backend-api/codex/responses",
+    "/backend-api/codex/realtime",
+    "/antigravity/v1/messages",
+    "/antigravity/v1/messages/count_tokens",
+    "/antigravity/v1beta/models",
+    "/v1/chat/completions",
+    "/chat/completions",
+    "/v1/embeddings",
+    "/embeddings",
+    "/v1/images/generations",
+    "/v1/images/edits",
+    "/images/generations",
+    "/images/edits",
+  ],
+  gateway_audit_exclude_paths: ["/health", "/setup/status"],
+  gateway_audit_redact_keys: [
+    "authorization",
+    "x-api-key",
+    "x-goog-api-key",
+    "cookie",
+    "set-cookie",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "client_secret",
+    "password",
+    "api_key",
+    "session_id",
+    "conversation_id",
+    "prompt_cache_key",
+  ],
+  gateway_audit_retention_days: 3,
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -10562,6 +10967,68 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
+function parseLineSeparatedAuditList(raw: string): string[] {
+  const seen = new Set<string>();
+  return raw
+    .split("\n")
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item || seen.has(item)) {
+        return false;
+      }
+      seen.add(item);
+      return true;
+    });
+}
+
+function formatLineSeparatedAuditList(values: string[] | null | undefined): string {
+  if (!Array.isArray(values) || values.length === 0) {
+    return "";
+  }
+  return values.join("\n");
+}
+
+const gatewayAuditCaptureModeOptions = computed(() => [
+  { value: "none", label: t("admin.settings.gatewayForwarding.auditCaptureNone") },
+  { value: "hash", label: t("admin.settings.gatewayForwarding.auditCaptureHash") },
+  { value: "preview", label: t("admin.settings.gatewayForwarding.auditCapturePreview") },
+  { value: "full", label: t("admin.settings.gatewayForwarding.auditCaptureFull") },
+]);
+
+const gatewayAuditInputMessagePolicyOptions = computed(() => [
+  { value: "all", label: t("admin.settings.gatewayForwarding.auditInputPolicyAll") },
+  { value: "user_messages", label: t("admin.settings.gatewayForwarding.auditInputPolicyUserMessages") },
+  { value: "last_user_message", label: t("admin.settings.gatewayForwarding.auditInputPolicyLastUserMessage") },
+  { value: "metadata_only", label: t("admin.settings.gatewayForwarding.auditInputPolicyMetadataOnly") },
+]);
+
+const gatewayAuditFullCaptureSelected = computed(
+  () =>
+    form.gateway_audit_input_capture_mode === "full" ||
+    form.gateway_audit_output_capture_mode === "full",
+);
+
+const gatewayAuditIncludePathsText = computed({
+  get: () => formatLineSeparatedAuditList(form.gateway_audit_include_paths),
+  set: (value: string) => {
+    form.gateway_audit_include_paths = parseLineSeparatedAuditList(value);
+  },
+});
+
+const gatewayAuditExcludePathsText = computed({
+  get: () => formatLineSeparatedAuditList(form.gateway_audit_exclude_paths),
+  set: (value: string) => {
+    form.gateway_audit_exclude_paths = parseLineSeparatedAuditList(value);
+  },
+});
+
+const gatewayAuditRedactKeysText = computed({
+  get: () => formatLineSeparatedAuditList(form.gateway_audit_redact_keys),
+  set: (value: string) => {
+    form.gateway_audit_redact_keys = parseLineSeparatedAuditList(value);
+  },
+});
+
 // ── codex_cli_only 黑/白名单结构化编辑（行 ↔ JSON）──
 interface CodexClientRow {
   originator: string;
@@ -10645,6 +11112,36 @@ const codexSyncedVersionLabel = computed(() => {
     version: synced,
   });
 });
+const gatewayAuditCaptureModes = new Set(["none", "hash", "preview", "full"]);
+
+function hasValidGatewayAuditResponse(
+  settings: Partial<SystemSettings>,
+): boolean {
+  return (
+    gatewayAuditCaptureModes.has(
+      String(settings.gateway_audit_input_capture_mode || "").toLowerCase(),
+    ) &&
+    gatewayAuditCaptureModes.has(
+      String(settings.gateway_audit_output_capture_mode || "").toLowerCase(),
+    )
+  );
+}
+
+function applySettingsResponseToForm(settings: Partial<SystemSettings>): void {
+  // Older/refactored backends could expose the audit DTO fields as Go zero
+  // values because the response mapper omitted the whole group. Do not let an
+  // incomplete response replace usable form defaults with blank modes and 0s.
+  const hasGatewayAuditConfig = hasValidGatewayAuditResponse(settings);
+
+  for (const [key, value] of Object.entries(settings)) {
+    if (key === "openai_fast_policy_settings") continue;
+    if (key.startsWith("gateway_audit_") && !hasGatewayAuditConfig) continue;
+    // null means unconfigured; keep the current/default form value.
+    if (value !== null && value !== undefined) {
+      (form as Record<string, unknown>)[key] = value;
+    }
+  }
+}
 
 async function loadSettings() {
   loading.value = true;
@@ -10653,12 +11150,7 @@ async function loadSettings() {
     const settings = await adminAPI.settings.getSettings();
     settings.payment_load_balance_strategy =
       settings.payment_load_balance_strategy || "round-robin";
-    // Only assign non-null values from backend (null means unconfigured, keep defaults)
-    for (const [key, value] of Object.entries(settings)) {
-      if (value !== null && value !== undefined) {
-        (form as Record<string, unknown>)[key] = value;
-      }
-    }
+    applySettingsResponseToForm(settings);
     syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
@@ -11239,6 +11731,52 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
+      gateway_audit_enabled: form.gateway_audit_enabled,
+      gateway_audit_input_capture_mode: form.gateway_audit_input_capture_mode,
+      gateway_audit_output_capture_mode: form.gateway_audit_output_capture_mode,
+      gateway_audit_input_message_policy: form.gateway_audit_input_message_policy,
+      gateway_audit_file_enabled: form.gateway_audit_file_enabled,
+      gateway_audit_file_path: form.gateway_audit_file_path?.trim() || "",
+      gateway_audit_ops_index_enabled: form.gateway_audit_ops_index_enabled,
+      gateway_audit_index_enabled: form.gateway_audit_index_enabled,
+      gateway_audit_index_async_enabled:
+        form.gateway_audit_index_async_enabled,
+      gateway_audit_index_queue_size:
+        Number(form.gateway_audit_index_queue_size) || 0,
+      gateway_audit_index_worker_count:
+        Number(form.gateway_audit_index_worker_count) || 0,
+      gateway_audit_index_batch_size:
+        Number(form.gateway_audit_index_batch_size) || 0,
+      gateway_audit_index_flush_interval_ms:
+        Number(form.gateway_audit_index_flush_interval_ms) || 0,
+      gateway_audit_index_write_timeout_ms:
+        Number(form.gateway_audit_index_write_timeout_ms) || 0,
+      gateway_audit_backfill_enabled: form.gateway_audit_backfill_enabled,
+      gateway_audit_backfill_interval_ms:
+        Number(form.gateway_audit_backfill_interval_ms) || 0,
+      gateway_audit_backfill_batch_size:
+        Number(form.gateway_audit_backfill_batch_size) || 0,
+      gateway_audit_retention_cleanup_interval_minutes:
+        Number(form.gateway_audit_retention_cleanup_interval_minutes) || 0,
+      gateway_audit_max_input_body_bytes:
+        Number(form.gateway_audit_max_input_body_bytes) || 0,
+      gateway_audit_max_output_body_bytes:
+        Number(form.gateway_audit_max_output_body_bytes) || 0,
+      gateway_audit_max_string_value_bytes:
+        Number(form.gateway_audit_max_string_value_bytes) || 0,
+      gateway_audit_max_array_items:
+        Number(form.gateway_audit_max_array_items) || 0,
+      gateway_audit_max_object_depth:
+        Number(form.gateway_audit_max_object_depth) || 0,
+      gateway_audit_sample_rate: Math.max(
+        0,
+        Math.min(1, Number(form.gateway_audit_sample_rate) || 0),
+      ),
+      gateway_audit_include_paths: form.gateway_audit_include_paths,
+      gateway_audit_exclude_paths: form.gateway_audit_exclude_paths,
+      gateway_audit_redact_keys: form.gateway_audit_redact_keys,
+      gateway_audit_retention_days:
+        Number(form.gateway_audit_retention_days) || 0,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:
@@ -11388,12 +11926,7 @@ async function saveSettings() {
     const updated = await settingsStepUp.run(() =>
       adminAPI.settings.updateSettings(payload),
     );
-    for (const [key, value] of Object.entries(updated)) {
-      if (key === "openai_fast_policy_settings") continue;
-      if (value !== null && value !== undefined) {
-        (form as Record<string, unknown>)[key] = value;
-      }
-    }
+    applySettingsResponseToForm(updated);
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
     form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(

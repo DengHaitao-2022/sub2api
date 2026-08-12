@@ -243,19 +243,47 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection *bool   `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                *string `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
-	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
-	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
-	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
+	GatewayAuditEnabled                         *bool     `json:"gateway_audit_enabled"`
+	GatewayAuditInputCaptureMode                *string   `json:"gateway_audit_input_capture_mode"`
+	GatewayAuditOutputCaptureMode               *string   `json:"gateway_audit_output_capture_mode"`
+	GatewayAuditInputMessagePolicy              *string   `json:"gateway_audit_input_message_policy"`
+	GatewayAuditFileEnabled                     *bool     `json:"gateway_audit_file_enabled"`
+	GatewayAuditFilePath                        *string   `json:"gateway_audit_file_path"`
+	GatewayAuditOpsIndexEnabled                 *bool     `json:"gateway_audit_ops_index_enabled"`
+	GatewayAuditIndexEnabled                    *bool     `json:"gateway_audit_index_enabled"`
+	GatewayAuditIndexAsyncEnabled               *bool     `json:"gateway_audit_index_async_enabled"`
+	GatewayAuditIndexQueueSize                  *int      `json:"gateway_audit_index_queue_size"`
+	GatewayAuditIndexWorkerCount                *int      `json:"gateway_audit_index_worker_count"`
+	GatewayAuditIndexBatchSize                  *int      `json:"gateway_audit_index_batch_size"`
+	GatewayAuditIndexFlushIntervalMs            *int      `json:"gateway_audit_index_flush_interval_ms"`
+	GatewayAuditIndexWriteTimeoutMs             *int      `json:"gateway_audit_index_write_timeout_ms"`
+	GatewayAuditBackfillEnabled                 *bool     `json:"gateway_audit_backfill_enabled"`
+	GatewayAuditBackfillIntervalMs              *int      `json:"gateway_audit_backfill_interval_ms"`
+	GatewayAuditBackfillBatchSize               *int      `json:"gateway_audit_backfill_batch_size"`
+	GatewayAuditRetentionCleanupIntervalMinutes *int      `json:"gateway_audit_retention_cleanup_interval_minutes"`
+	GatewayAuditMaxInputBodyBytes               *int64    `json:"gateway_audit_max_input_body_bytes"`
+	GatewayAuditMaxOutputBodyBytes              *int64    `json:"gateway_audit_max_output_body_bytes"`
+	GatewayAuditMaxStringValueBytes             *int      `json:"gateway_audit_max_string_value_bytes"`
+	GatewayAuditMaxArrayItems                   *int      `json:"gateway_audit_max_array_items"`
+	GatewayAuditMaxObjectDepth                  *int      `json:"gateway_audit_max_object_depth"`
+	GatewayAuditSampleRate                      *float64  `json:"gateway_audit_sample_rate"`
+	GatewayAuditIncludePaths                    *[]string `json:"gateway_audit_include_paths"`
+	GatewayAuditExcludePaths                    *[]string `json:"gateway_audit_exclude_paths"`
+	GatewayAuditRedactKeys                      *[]string `json:"gateway_audit_redact_keys"`
+	GatewayAuditRetentionDays                   *int      `json:"gateway_audit_retention_days"`
+	EnableFingerprintUnification                *bool     `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough                   *bool     `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                            *bool     `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection      *bool     `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                     *string   `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks               *string   `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection          *bool     `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl                  *bool     `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization           *bool     `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion                 *string   `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                        *string   `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion                    *string   `json:"openai_codex_client_version"`
+	OpenAICodexVersionAutoSyncEnabled           *bool     `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1673,6 +1701,174 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpsMetricsIntervalSeconds
 		}(),
+		GatewayAuditEnabled: func() bool {
+			if req.GatewayAuditEnabled != nil {
+				return *req.GatewayAuditEnabled
+			}
+			return previousSettings.GatewayAuditEnabled
+		}(),
+		GatewayAuditInputCaptureMode: func() string {
+			if req.GatewayAuditInputCaptureMode != nil {
+				return normalizeGatewayAuditCaptureModeInput(*req.GatewayAuditInputCaptureMode, previousSettings.GatewayAuditInputCaptureMode)
+			}
+			return previousSettings.GatewayAuditInputCaptureMode
+		}(),
+		GatewayAuditOutputCaptureMode: func() string {
+			if req.GatewayAuditOutputCaptureMode != nil {
+				return normalizeGatewayAuditCaptureModeInput(*req.GatewayAuditOutputCaptureMode, previousSettings.GatewayAuditOutputCaptureMode)
+			}
+			return previousSettings.GatewayAuditOutputCaptureMode
+		}(),
+		GatewayAuditInputMessagePolicy: func() string {
+			if req.GatewayAuditInputMessagePolicy != nil {
+				return normalizeGatewayAuditInputMessagePolicyInput(*req.GatewayAuditInputMessagePolicy, previousSettings.GatewayAuditInputMessagePolicy)
+			}
+			return previousSettings.GatewayAuditInputMessagePolicy
+		}(),
+		GatewayAuditFileEnabled: func() bool {
+			if req.GatewayAuditFileEnabled != nil {
+				return *req.GatewayAuditFileEnabled
+			}
+			return previousSettings.GatewayAuditFileEnabled
+		}(),
+		GatewayAuditFilePath: func() string {
+			if req.GatewayAuditFilePath != nil {
+				return strings.TrimSpace(*req.GatewayAuditFilePath)
+			}
+			return previousSettings.GatewayAuditFilePath
+		}(),
+		GatewayAuditOpsIndexEnabled: func() bool {
+			if req.GatewayAuditOpsIndexEnabled != nil {
+				return *req.GatewayAuditOpsIndexEnabled
+			}
+			return previousSettings.GatewayAuditOpsIndexEnabled
+		}(),
+		GatewayAuditIndexEnabled: func() bool {
+			if req.GatewayAuditIndexEnabled != nil {
+				return *req.GatewayAuditIndexEnabled
+			}
+			return previousSettings.GatewayAuditIndexEnabled
+		}(),
+		GatewayAuditIndexAsyncEnabled: func() bool {
+			if req.GatewayAuditIndexAsyncEnabled != nil {
+				return *req.GatewayAuditIndexAsyncEnabled
+			}
+			return previousSettings.GatewayAuditIndexAsyncEnabled
+		}(),
+		GatewayAuditIndexQueueSize: func() int {
+			if req.GatewayAuditIndexQueueSize != nil {
+				return max(0, *req.GatewayAuditIndexQueueSize)
+			}
+			return previousSettings.GatewayAuditIndexQueueSize
+		}(),
+		GatewayAuditIndexWorkerCount: func() int {
+			if req.GatewayAuditIndexWorkerCount != nil {
+				return max(0, *req.GatewayAuditIndexWorkerCount)
+			}
+			return previousSettings.GatewayAuditIndexWorkerCount
+		}(),
+		GatewayAuditIndexBatchSize: func() int {
+			if req.GatewayAuditIndexBatchSize != nil {
+				return max(0, *req.GatewayAuditIndexBatchSize)
+			}
+			return previousSettings.GatewayAuditIndexBatchSize
+		}(),
+		GatewayAuditIndexFlushIntervalMs: func() int {
+			if req.GatewayAuditIndexFlushIntervalMs != nil {
+				return max(0, *req.GatewayAuditIndexFlushIntervalMs)
+			}
+			return previousSettings.GatewayAuditIndexFlushIntervalMs
+		}(),
+		GatewayAuditIndexWriteTimeoutMs: func() int {
+			if req.GatewayAuditIndexWriteTimeoutMs != nil {
+				return max(0, *req.GatewayAuditIndexWriteTimeoutMs)
+			}
+			return previousSettings.GatewayAuditIndexWriteTimeoutMs
+		}(),
+		GatewayAuditBackfillEnabled: func() bool {
+			if req.GatewayAuditBackfillEnabled != nil {
+				return *req.GatewayAuditBackfillEnabled
+			}
+			return previousSettings.GatewayAuditBackfillEnabled
+		}(),
+		GatewayAuditBackfillIntervalMs: func() int {
+			if req.GatewayAuditBackfillIntervalMs != nil {
+				return max(0, *req.GatewayAuditBackfillIntervalMs)
+			}
+			return previousSettings.GatewayAuditBackfillIntervalMs
+		}(),
+		GatewayAuditBackfillBatchSize: func() int {
+			if req.GatewayAuditBackfillBatchSize != nil {
+				return max(0, *req.GatewayAuditBackfillBatchSize)
+			}
+			return previousSettings.GatewayAuditBackfillBatchSize
+		}(),
+		GatewayAuditRetentionCleanupIntervalMinutes: func() int {
+			if req.GatewayAuditRetentionCleanupIntervalMinutes != nil {
+				return max(0, *req.GatewayAuditRetentionCleanupIntervalMinutes)
+			}
+			return previousSettings.GatewayAuditRetentionCleanupIntervalMinutes
+		}(),
+		GatewayAuditMaxInputBodyBytes: func() int64 {
+			if req.GatewayAuditMaxInputBodyBytes != nil {
+				return max(0, *req.GatewayAuditMaxInputBodyBytes)
+			}
+			return previousSettings.GatewayAuditMaxInputBodyBytes
+		}(),
+		GatewayAuditMaxOutputBodyBytes: func() int64 {
+			if req.GatewayAuditMaxOutputBodyBytes != nil {
+				return max(0, *req.GatewayAuditMaxOutputBodyBytes)
+			}
+			return previousSettings.GatewayAuditMaxOutputBodyBytes
+		}(),
+		GatewayAuditMaxStringValueBytes: func() int {
+			if req.GatewayAuditMaxStringValueBytes != nil {
+				return max(0, *req.GatewayAuditMaxStringValueBytes)
+			}
+			return previousSettings.GatewayAuditMaxStringValueBytes
+		}(),
+		GatewayAuditMaxArrayItems: func() int {
+			if req.GatewayAuditMaxArrayItems != nil {
+				return max(0, *req.GatewayAuditMaxArrayItems)
+			}
+			return previousSettings.GatewayAuditMaxArrayItems
+		}(),
+		GatewayAuditMaxObjectDepth: func() int {
+			if req.GatewayAuditMaxObjectDepth != nil {
+				return max(0, *req.GatewayAuditMaxObjectDepth)
+			}
+			return previousSettings.GatewayAuditMaxObjectDepth
+		}(),
+		GatewayAuditSampleRate: func() float64 {
+			if req.GatewayAuditSampleRate != nil {
+				return max(0, min(1, *req.GatewayAuditSampleRate))
+			}
+			return previousSettings.GatewayAuditSampleRate
+		}(),
+		GatewayAuditIncludePaths: func() []string {
+			if req.GatewayAuditIncludePaths != nil {
+				return normalizeStringList(*req.GatewayAuditIncludePaths)
+			}
+			return previousSettings.GatewayAuditIncludePaths
+		}(),
+		GatewayAuditExcludePaths: func() []string {
+			if req.GatewayAuditExcludePaths != nil {
+				return normalizeStringList(*req.GatewayAuditExcludePaths)
+			}
+			return previousSettings.GatewayAuditExcludePaths
+		}(),
+		GatewayAuditRedactKeys: func() []string {
+			if req.GatewayAuditRedactKeys != nil {
+				return normalizeStringList(*req.GatewayAuditRedactKeys)
+			}
+			return previousSettings.GatewayAuditRedactKeys
+		}(),
+		GatewayAuditRetentionDays: func() int {
+			if req.GatewayAuditRetentionDays != nil {
+				return max(0, *req.GatewayAuditRetentionDays)
+			}
+			return previousSettings.GatewayAuditRetentionDays
+		}(),
 		EnableFingerprintUnification: func() bool {
 			if req.EnableFingerprintUnification != nil {
 				return *req.EnableFingerprintUnification
@@ -2361,6 +2557,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
 	}
+	applyGatewayAuditSettingsDTO(&payload, updatedSettings)
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
 	} else if fastPolicy != nil {

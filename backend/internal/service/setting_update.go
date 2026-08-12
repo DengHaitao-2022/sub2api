@@ -458,6 +458,58 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
 
 	// Gateway forwarding behavior
+	updates[SettingKeyGatewayAuditEnabled] = strconv.FormatBool(settings.GatewayAuditEnabled)
+	updates[SettingKeyGatewayAuditInputCaptureMode] = normalizeGatewayAuditCaptureMode(settings.GatewayAuditInputCaptureMode, "preview")
+	updates[SettingKeyGatewayAuditOutputCaptureMode] = normalizeGatewayAuditCaptureMode(settings.GatewayAuditOutputCaptureMode, "preview")
+	updates[SettingKeyGatewayAuditInputMessagePolicy] = normalizeGatewayAuditInputMessagePolicy(settings.GatewayAuditInputMessagePolicy, "all")
+	updates[SettingKeyGatewayAuditFileEnabled] = strconv.FormatBool(settings.GatewayAuditFileEnabled)
+	updates[SettingKeyGatewayAuditFilePath] = strings.TrimSpace(settings.GatewayAuditFilePath)
+	updates[SettingKeyGatewayAuditOpsIndexEnabled] = strconv.FormatBool(settings.GatewayAuditOpsIndexEnabled)
+	updates[SettingKeyGatewayAuditIndexEnabled] = strconv.FormatBool(settings.GatewayAuditIndexEnabled)
+	updates[SettingKeyGatewayAuditIndexAsyncEnabled] = strconv.FormatBool(settings.GatewayAuditIndexAsyncEnabled)
+	updates[SettingKeyGatewayAuditIndexQueueSize] = strconv.Itoa(settings.GatewayAuditIndexQueueSize)
+	updates[SettingKeyGatewayAuditIndexWorkerCount] = strconv.Itoa(settings.GatewayAuditIndexWorkerCount)
+	updates[SettingKeyGatewayAuditIndexBatchSize] = strconv.Itoa(settings.GatewayAuditIndexBatchSize)
+	updates[SettingKeyGatewayAuditIndexFlushIntervalMs] = strconv.Itoa(settings.GatewayAuditIndexFlushIntervalMs)
+	updates[SettingKeyGatewayAuditIndexWriteTimeoutMs] = strconv.Itoa(settings.GatewayAuditIndexWriteTimeoutMs)
+	updates[SettingKeyGatewayAuditBackfillEnabled] = strconv.FormatBool(settings.GatewayAuditBackfillEnabled)
+	updates[SettingKeyGatewayAuditBackfillIntervalMs] = strconv.Itoa(settings.GatewayAuditBackfillIntervalMs)
+	updates[SettingKeyGatewayAuditBackfillBatchSize] = strconv.Itoa(settings.GatewayAuditBackfillBatchSize)
+	updates[SettingKeyGatewayAuditRetentionCleanupIntervalMinutes] = strconv.Itoa(settings.GatewayAuditRetentionCleanupIntervalMinutes)
+	settings.GatewayAuditMaxInputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxInputBodyBytes,
+		settings.GatewayAuditInputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	settings.GatewayAuditMaxOutputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxOutputBodyBytes,
+		settings.GatewayAuditOutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
+	updates[SettingKeyGatewayAuditMaxInputBodyBytes] = strconv.FormatInt(settings.GatewayAuditMaxInputBodyBytes, 10)
+	updates[SettingKeyGatewayAuditMaxOutputBodyBytes] = strconv.FormatInt(settings.GatewayAuditMaxOutputBodyBytes, 10)
+	updates[SettingKeyGatewayAuditMaxStringValueBytes] = strconv.Itoa(settings.GatewayAuditMaxStringValueBytes)
+	updates[SettingKeyGatewayAuditMaxArrayItems] = strconv.Itoa(settings.GatewayAuditMaxArrayItems)
+	updates[SettingKeyGatewayAuditMaxObjectDepth] = strconv.Itoa(settings.GatewayAuditMaxObjectDepth)
+	updates[SettingKeyGatewayAuditSampleRate] = strconv.FormatFloat(settings.GatewayAuditSampleRate, 'f', -1, 64)
+	gatewayAuditIncludePathsJSON, err := json.Marshal(settings.GatewayAuditIncludePaths)
+	if err != nil {
+		return nil, fmt.Errorf("marshal gateway audit include paths: %w", err)
+	}
+	updates[SettingKeyGatewayAuditIncludePaths] = string(gatewayAuditIncludePathsJSON)
+	gatewayAuditExcludePathsJSON, err := json.Marshal(settings.GatewayAuditExcludePaths)
+	if err != nil {
+		return nil, fmt.Errorf("marshal gateway audit exclude paths: %w", err)
+	}
+	updates[SettingKeyGatewayAuditExcludePaths] = string(gatewayAuditExcludePathsJSON)
+	gatewayAuditRedactKeysJSON, err := json.Marshal(settings.GatewayAuditRedactKeys)
+	if err != nil {
+		return nil, fmt.Errorf("marshal gateway audit redact keys: %w", err)
+	}
+	updates[SettingKeyGatewayAuditRedactKeys] = string(gatewayAuditRedactKeysJSON)
+	updates[SettingKeyGatewayAuditRetentionDays] = strconv.Itoa(settings.GatewayAuditRetentionDays)
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
@@ -695,6 +747,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	})
 	gatewayForwardingSF.Forget("gateway_forwarding")
 	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+		gatewayAuditEnabled:              settings.GatewayAuditEnabled,
 		fingerprintUnification:           settings.EnableFingerprintUnification,
 		metadataPassthrough:              settings.EnableMetadataPassthrough,
 		cchSigning:                       settings.EnableCCHSigning,
@@ -705,6 +758,55 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		rewriteMessageCacheControl:       settings.RewriteMessageCacheControl,
 		clientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+	})
+	s.gatewayAuditConfigSF.Forget("gateway_audit_config")
+	gatewayAuditVersion := gatewayAuditConfigCacheVersion.Add(1)
+	gatewayAuditCfg := config.GatewayAuditConfig{}
+	if s != nil && s.cfg != nil {
+		gatewayAuditCfg = s.cfg.Gateway.Audit
+	}
+	gatewayAuditCfg.Enabled = settings.GatewayAuditEnabled
+	gatewayAuditCfg.InputCaptureMode = settings.GatewayAuditInputCaptureMode
+	gatewayAuditCfg.OutputCaptureMode = settings.GatewayAuditOutputCaptureMode
+	gatewayAuditCfg.InputMessagePolicy = normalizeGatewayAuditInputMessagePolicy(settings.GatewayAuditInputMessagePolicy, "all")
+	gatewayAuditCfg.FileEnabled = settings.GatewayAuditFileEnabled
+	gatewayAuditCfg.FilePath = settings.GatewayAuditFilePath
+	gatewayAuditCfg.OpsIndexEnabled = settings.GatewayAuditOpsIndexEnabled
+	gatewayAuditCfg.IndexEnabled = settings.GatewayAuditIndexEnabled
+	gatewayAuditCfg.IndexAsyncEnabled = settings.GatewayAuditIndexAsyncEnabled
+	gatewayAuditCfg.IndexQueueSize = settings.GatewayAuditIndexQueueSize
+	gatewayAuditCfg.IndexWorkerCount = settings.GatewayAuditIndexWorkerCount
+	gatewayAuditCfg.IndexBatchSize = settings.GatewayAuditIndexBatchSize
+	gatewayAuditCfg.IndexFlushIntervalMs = settings.GatewayAuditIndexFlushIntervalMs
+	gatewayAuditCfg.IndexWriteTimeoutMs = settings.GatewayAuditIndexWriteTimeoutMs
+	gatewayAuditCfg.BackfillEnabled = settings.GatewayAuditBackfillEnabled
+	gatewayAuditCfg.BackfillIntervalMs = settings.GatewayAuditBackfillIntervalMs
+	gatewayAuditCfg.BackfillBatchSize = settings.GatewayAuditBackfillBatchSize
+	gatewayAuditCfg.RetentionCleanupIntervalMinutes = settings.GatewayAuditRetentionCleanupIntervalMinutes
+	gatewayAuditCfg.MaxInputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxInputBodyBytes,
+		settings.GatewayAuditInputCaptureMode,
+		config.DefaultGatewayAuditMaxInputBodyBytes,
+		config.MaxGatewayAuditFullInputBodyBytes,
+	)
+	gatewayAuditCfg.MaxOutputBodyBytes = normalizeGatewayAuditBodyLimit(
+		settings.GatewayAuditMaxOutputBodyBytes,
+		settings.GatewayAuditOutputCaptureMode,
+		config.DefaultGatewayAuditMaxOutputBodyBytes,
+		config.MaxGatewayAuditFullOutputBodyBytes,
+	)
+	gatewayAuditCfg.MaxStringValueBytes = settings.GatewayAuditMaxStringValueBytes
+	gatewayAuditCfg.MaxArrayItems = settings.GatewayAuditMaxArrayItems
+	gatewayAuditCfg.MaxObjectDepth = settings.GatewayAuditMaxObjectDepth
+	gatewayAuditCfg.SampleRate = settings.GatewayAuditSampleRate
+	gatewayAuditCfg.IncludePaths = append([]string(nil), settings.GatewayAuditIncludePaths...)
+	gatewayAuditCfg.ExcludePaths = append([]string(nil), settings.GatewayAuditExcludePaths...)
+	gatewayAuditCfg.RedactKeys = append([]string(nil), settings.GatewayAuditRedactKeys...)
+	gatewayAuditCfg.RetentionDays = settings.GatewayAuditRetentionDays
+	s.gatewayAuditConfigCache.Store(&cachedGatewayAuditConfig{
+		cfg:       gatewayAuditCfg,
+		expiresAt: 0,
+		version:   gatewayAuditVersion,
 	})
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
 	antigravityUserAgentVersion := antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)

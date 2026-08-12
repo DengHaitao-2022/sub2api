@@ -133,6 +133,9 @@ type SettingService struct {
 	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
 	codexRestrictionPolicySF    singleflight.Group
 
+	gatewayAuditConfigCache atomic.Value // *cachedGatewayAuditConfig
+	gatewayAuditConfigSF    singleflight.Group
+
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
 

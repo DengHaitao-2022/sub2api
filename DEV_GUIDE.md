@@ -243,6 +243,158 @@ git add ent/       # 生成的文件也要提交
 - [ ] 所有 test stub 补全新接口方法（如果改了 interface）
 - [ ] Ent 生成的代码已提交（如果改了 schema）
 
+---
+
+### 坑 12：网关审计日志实现与防遗忘清单
+
+> 这是长期维护记忆。修改 `/admin/settings`、网关路由、Usage 审计详情或任何 `gateway_audit_*` 字段前必须先读本节。
+
+#### 1. 核心数据流
+
+```text
+config.gateway.audit（部署默认值）
+        +
+settings 表 gateway_audit_*（管理员覆盖值，优先级更高）
+        |
+SettingService.GetGatewayAuditConfig（合并 + 60 秒缓存，保存时立即失效/回填）
+        |
+GatewayAuditMiddlewareWithConfigProvider（每个请求取得有效配置）
+        |
+handler 显式 CaptureInput / MarkAccount / MarkAttemptResult
+        +
+ResponseWriter 捕获状态码、响应摘要、TTFT、usage
+        |
+WriteEvent
+   |-- JSONL：完整事件/WAL，按日期分片
+   |-- Ops index：运维日志索引
+   `-- PostgreSQL：可检索元数据 + JSONL 文件路径/offset
+          |-- 同步写入，或 Dispatcher -> IndexWorkerPool 异步写入
+          |-- BackfillScanner 从 JSONL 补漏
+          `-- RetentionScheduler 清理过期索引
+        |
+/api/v1/admin/audit 查询索引，详情按 offset 读取完整 JSONL
+        |
+UsageView + AuditDetailDrawer 展示
+```
+
+设计原则：**JSONL 保存完整审计事件，PostgreSQL 主要作为查询索引**。不能把二者误认为重复存储后随意删除其中一条链路；异步索引失败时还依赖 JSONL backfill 恢复。
+
+#### 2. 关键代码位置
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 静态配置 | `backend/internal/config/config.go` | `GatewayAuditConfig`、默认/最大正文限制 |
+| Setting key | `backend/internal/service/domain_constants.go` | 全部 `SettingKeyGatewayAudit*` 常量 |
+| 默认值与读取 | `backend/internal/service/setting_parse.go`、`settings_view.go` | config 默认值转 settings、数据库值转 `SystemSettings` |
+| 实时配置 | `backend/internal/service/setting_gateway_runtime.go` | DB 覆盖 config、校验、缓存和 singleflight |
+| 保存 | `backend/internal/service/setting_update.go` | 序列化入库、正文限制归一化、缓存失效/回填 |
+| Admin 请求 | `backend/internal/handler/admin/setting_handler_update.go` | PUT 指针字段、保留未提交旧值、输入归一化 |
+| Admin 响应 | `backend/internal/handler/admin/setting_handler.go` | `applyGatewayAuditSettingsDTO`，GET/PUT 必须共用 |
+| DTO | `backend/internal/handler/dto/settings.go` | admin settings JSON 字段 |
+| 路由挂载 | `backend/internal/server/routes/gateway.go` | 在各网关路由挂载 audit middleware 和实时 config provider |
+| 输入/账号/尝试 | `backend/internal/handler/gateway_audit_helper.go` | `captureGatewayInput*`、账号快照、上游尝试结果 |
+| 请求生命周期 | `backend/internal/audit/middleware.go` | enable、路径过滤、稳定采样、响应捕获、最终事件组装 |
+| 上下文/事件 | `backend/internal/audit/context.go`、`event.go` | 请求内快照及最终事件结构 |
+| 脱敏 | `backend/internal/audit/redact.go` | preview/full 正文结构化裁剪和敏感键脱敏 |
+| 写入 | `backend/internal/audit/sink.go` | JSONL、Ops、同步/异步 PostgreSQL index |
+| 异步管线 | `dispatcher.go`、`index_worker.go` | 有界队列、批量 index worker、队列满指标 |
+| 恢复/保留 | `backfill_scanner.go`、`retention_scheduler.go` | JSONL 补索引、索引保留清理 |
+| Runtime 启动 | `backend/internal/audit/runtime.go`、`backend/internal/service/wire.go` | worker/backfill/retention 的启动时拓扑 |
+| Repository | `backend/internal/repository/gateway_audit_*.go` | 索引、批量写入及 offset 持久化 |
+| Admin 查询 | `backend/internal/handler/admin/audit_handler.go`、`backend/internal/service/gateway_audit.go` | list/stats/detail/export/health/access-log/by-request |
+| 前端设置 | `frontend/src/api/admin/settings.ts`、`views/admin/SettingsView.vue` | 类型、默认值、回显、保存和旧响应保护 |
+| 前端查询 | `frontend/src/api/admin/audit.ts`、`components/admin/audit/*`、`views/admin/UsageView.vue` | 查询、详情抽屉、健康状态和 Usage 关联 |
+
+#### 3. 采集模式语义
+
+- `none`：不保留该方向正文，也不要求正文 hash。
+- `hash`：只保留 SHA-256、大小、截断等元数据，不保留正文。
+- `preview`：在限制内保留经过裁剪和脱敏的预览。
+- `full`：保留更大范围正文，但仍受硬上限、脱敏规则和二进制内容保护约束。
+- 非法或空 capture mode 必须归一化到 `preview`。
+- `full` 输入硬上限为 1 MiB，输出硬上限为 2 MiB；修改限制时必须继续调用 `normalizeGatewayAuditBodyLimit`。
+
+特别注意：middleware 可以包装响应 writer，但请求 body 往往已被 handler 消费，因此每条新网关处理链必须在解析原始 body 后调用 `captureGatewayInput` 或 `captureGatewayInputHash`。新增协议/别名路由时只挂 middleware 不等于输入审计已经完整。
+
+#### 4. 实时生效与重启边界
+
+`RegisterGatewayRoutes` 把 `SettingService.GetGatewayAuditConfig` 作为 provider 传给 middleware，所以以下配置按请求读取，可实时生效：
+
+- 总开关、输入/输出 capture mode；
+- sample rate、include/exclude paths、redact keys；
+- 正文和 preview 限制；
+- sink 开关在 `WriteEvent` 层的判断。
+
+`ProvideGatewayAuditRuntime` 只在进程启动时依据配置创建 Dispatcher、worker、backfill、retention，因此以下拓扑/调度设置按当前实现需要重启：
+
+- 文件路径；
+- index queue size、worker count、batch size、flush interval、write timeout；
+- backfill enabled/interval/batch size；
+- retention cleanup interval；
+- 任何决定 runtime 组件是否被创建的组合开关。
+
+如果未来要让这些配置热更新，必须实现安全的 runtime stop/rebuild/start，而不是只修改设置页上的“实时生效”文案。
+
+#### 5. `/admin/settings` 防覆盖约束
+
+2026-07 曾发生一次真实回归：审计 DTO、保存和运行时逻辑都存在，但 Handler 拆分/合并时丢失了响应 struct literal 中的字段映射。Go 自动输出零值，前端因此把当前配置覆盖为 `false`、`0` 和空 capture mode，看起来像“配置未保存/输入策略消失”。
+
+当前防线：
+
+1. 所有审计响应字段集中在 `applyGatewayAuditSettingsDTO`。
+2. `GetSettings` 和 `UpdateSettings` 成功响应都必须调用该 helper。
+3. 前端统一通过 `applySettingsResponseToForm` 回填；若输入/输出 capture mode 无效，则把整组响应视为旧版不完整响应，不用零值覆盖可用默认值。
+4. GET 和 PUT 均有回归测试，Handler 重构或解决 merge conflict 时不得删除。
+
+#### 6. 新增/修改 `gateway_audit_*` 字段的强制同步清单
+
+一个字段至少需要同步以下位置，少一处都视为未完成：
+
+- [ ] `config.GatewayAuditConfig` 和配置默认值/校验；
+- [ ] `SettingKeyGatewayAudit*`；
+- [ ] `SystemSettings` service view；
+- [ ] `setting_parse.go` 默认值和 DB 解析；
+- [ ] `setting_gateway_runtime.go` merge、GetMultiple key 列表和缓存结果；
+- [ ] `setting_update.go` 持久化及保存后的缓存回填；
+- [ ] `dto.SystemSettings` JSON 字段；
+- [ ] `UpdateSettingsRequest` 指针字段及“未提交则保留旧值”逻辑；
+- [ ] `applyGatewayAuditSettingsDTO`；
+- [ ] `setting_handler_audit.go` 设置变更审计；
+- [ ] `frontend/src/api/admin/settings.ts` 的响应和更新类型；
+- [ ] `SettingsView.vue` 表单默认值、UI、load/save payload；
+- [ ] 中英文 i18n；
+- [ ] GET/PUT 回显测试、service parse/update/runtime 测试；
+- [ ] 若影响 runtime 拓扑，更新重启提示和本节说明。
+
+#### 7. 安全与可靠性约束
+
+- 默认脱敏列表必须覆盖 Authorization、API key、Cookie、token、password、client secret、session/conversation 标识等敏感键。
+- 二进制、图片/音视频和 base64 图片响应不可写入正文预览，只记录 hash/大小等元数据。
+- 采样使用 request ID/path 的稳定 hash，不能改为每次随机，否则同一请求的行为不可复现。
+- include/exclude 按规范化 path 前缀匹配，exclude 优先。
+- 异步队列必须有界；队列满应记录指标/告警，不能阻塞网关主链路。
+- 查看详情和导出必须写 access log，保留 operator、IP、User-Agent。
+- JSONL 写失败当前会返回 error 并记录告警；修改 sink 容错策略前必须明确 WAL 与 index 一致性后果。
+
+#### 8. 最小验证命令
+
+```bash
+# Handler GET/PUT 回显与 admin 审计 API
+cd backend
+GOCACHE=/tmp/sub2api-go-build go test ./internal/handler/admin -count=1
+
+# 审计中间件、脱敏、sink、worker、backfill
+GOCACHE=/tmp/sub2api-go-build go test ./internal/audit -count=1
+
+# Setting 解析、保存和实时配置
+GOCACHE=/tmp/sub2api-go-build go test ./internal/service -run 'GatewayAudit|SettingService' -count=1
+
+# 前端设置与详情类型
+cd ../frontend
+pnpm typecheck
+pnpm exec eslint src/views/admin/SettingsView.vue src/views/admin/UsageView.vue src/api/admin/audit.ts
+```
+
 ## 五、常用命令速查
 
 ### 数据库操作
