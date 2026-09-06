@@ -271,19 +271,20 @@ type UpdateSettingsRequest struct {
 	GatewayAuditExcludePaths                    *[]string `json:"gateway_audit_exclude_paths"`
 	GatewayAuditRedactKeys                      *[]string `json:"gateway_audit_redact_keys"`
 	GatewayAuditRetentionDays                   *int      `json:"gateway_audit_retention_days"`
-	EnableFingerprintUnification                *bool     `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough                   *bool     `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                            *bool     `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection      *bool     `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                     *string   `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks               *string   `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection          *bool     `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl                  *bool     `json:"rewrite_message_cache_control"`
-	EnableClientDatelineNormalization           *bool     `json:"enable_client_dateline_normalization"`
-	AntigravityUserAgentVersion                 *string   `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent                        *string   `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion                    *string   `json:"openai_codex_client_version"`
-	OpenAICodexVersionAutoSyncEnabled           *bool     `json:"openai_codex_version_auto_sync_enabled"`
+	OpenAITTFTMode                         *string `json:"openai_ttft_mode"`
+	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection *bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                *string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
+	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -360,6 +361,7 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorMode                   *string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
+	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
 
 	// Grok model mapping policy
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
@@ -373,6 +375,9 @@ type UpdateSettingsRequest struct {
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
 	ModelPlazaDescription *string `json:"model_plaza_description"`
+
+	// Plugin management menu visibility switch; plugin runtime is unaffected.
+	PluginManagementEnabled *bool `json:"plugin_management_enabled"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -465,7 +470,7 @@ func buildSettingKeyByJSONName() map[string]string {
 	out := make(map[string]string, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		if field.Type.Kind() == reflect.Ptr {
+		if field.Type.Kind() == reflect.Pointer {
 			continue
 		}
 		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
@@ -1875,6 +1880,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.EnableFingerprintUnification
 		}(),
+		OpenAITTFTMode: func() string {
+			if req.OpenAITTFTMode != nil {
+				return *req.OpenAITTFTMode
+			}
+			return previousSettings.OpenAITTFTMode
+		}(),
 		EnableMetadataPassthrough: func() bool {
 			if req.EnableMetadataPassthrough != nil {
 				return *req.EnableMetadataPassthrough
@@ -2085,6 +2096,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorHideThroughput
 		}(),
+		ChannelMonitorShowQuota: func() bool {
+			if req.ChannelMonitorShowQuota != nil {
+				return *req.ChannelMonitorShowQuota
+			}
+			return previousSettings.ChannelMonitorShowQuota
+		}(),
 		GrokDefaultTextModel: func() string {
 			if req.GrokDefaultTextModel != nil {
 				return *req.GrokDefaultTextModel
@@ -2126,6 +2143,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.ModelPlazaDescription
 			}
 			return previousSettings.ModelPlazaDescription
+		}(),
+		PluginManagementEnabled: func() bool {
+			if req.PluginManagementEnabled != nil {
+				return *req.PluginManagementEnabled
+			}
+			return previousSettings.PluginManagementEnabled
 		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
@@ -2538,6 +2561,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
+		ChannelMonitorShowQuota:              updatedSettings.ChannelMonitorShowQuota,
 
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
@@ -2545,9 +2569,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
-		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth: updatedSettings.ModelPlazaRequireAuth,
-		ModelPlazaDescription: updatedSettings.ModelPlazaDescription,
+		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,
+		ModelPlazaDescription:   updatedSettings.ModelPlazaDescription,
+		PluginManagementEnabled: updatedSettings.PluginManagementEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
