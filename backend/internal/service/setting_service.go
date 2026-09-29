@@ -138,6 +138,7 @@ type SettingService struct {
 	gatewayAuditConfigCache atomic.Value // *cachedGatewayAuditConfig
 	gatewayAuditConfigSF    singleflight.Group
 
+	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
 
