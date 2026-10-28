@@ -221,13 +221,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 	}
 
 	auditByRequest := h.lookupAuditForUsage(c.Request.Context(), records)
-	out := make([]dto.AdminUsageLog, 0, len(records))
-	for i := range records {
-		item := *dto.UsageLogFromServiceAdmin(&records[i])
-		annotateUsageAudit(&item, &records[i], auditByRequest)
-		out = append(out, item)
-	}
-	response.Paginated(c, out, result.Total, page, pageSize)
+	response.Paginated(c, adminUsageLogResponses(c, records, auditByRequest), result.Total, page, pageSize)
 }
 
 func (h *UsageHandler) lookupAuditForUsage(ctx context.Context, records []service.UsageLog) map[service.GatewayAuditRequestKey]*service.GatewayAuditIndex {
