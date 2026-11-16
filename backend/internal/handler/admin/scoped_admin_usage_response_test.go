@@ -90,3 +90,32 @@ func TestScopedAdminUsageListEmptyRemainsArray(t *testing.T) {
 	require.Equal(t, 200, w.Code)
 	require.Contains(t, w.Body.String(), `"items":[]`)
 }
+
+func TestAdminUsageLogResponsesKeepsAuditLinksForFullAccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	records := []service.UsageLog{{ID: 1, APIKeyID: 2, RequestID: "req-audit", Model: "model"}}
+	audits := map[service.GatewayAuditRequestKey]*service.GatewayAuditIndex{
+		{RequestID: "req-audit", APIKeyID: 2}: {AuditID: "audit-linked"},
+	}
+	for _, full := range []bool{false, true} {
+		t.Run(map[bool]string{false: "restricted", true: "full_access"}[full], func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("GET", "/usage", nil)
+			c.Request = c.Request.WithContext(adminaccess.WithPrincipal(c.Request.Context(), &adminaccess.Principal{Policy: adminaccess.Policy{FullAccess: full}}))
+			data, err := json.Marshal(adminUsageLogResponses(c, records, audits))
+			require.NoError(t, err)
+			var items []map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(data, &items))
+			require.Len(t, items, 1)
+			if full {
+				require.JSONEq(t, `"audit-linked"`, string(items[0]["audit_id"]))
+				require.JSONEq(t, `true`, string(items[0]["audit_available"]))
+				require.JSONEq(t, `"captured"`, string(items[0]["audit_status"]))
+			} else {
+				require.NotContains(t, items[0], "audit_id")
+				require.NotContains(t, items[0], "audit_available")
+				require.NotContains(t, items[0], "audit_status")
+			}
+		})
+	}
+}

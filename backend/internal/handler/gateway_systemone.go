@@ -56,11 +56,11 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		if handleRequestBodyReadError(c, reqLog, err) {
 			return
 		}
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		status, message := requestBodyReadFailure(reqLog, c.Request, err)
+		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
 	model, err := typesafe.ValidateSystemOneRequest(body)
@@ -68,6 +68,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	captureGatewayInput(c, service.PlatformTypeSafe, "systemone", model, false, body)
 	ensureCompositeTargetPlatform(c, apiKey, model)
 	if apiKey.Group.Platform != service.PlatformTypeSafe &&
 		(apiKey.Group.Platform != service.PlatformComposite || !compositeTargetPlatformAllowed(c, apiKey, model, service.PlatformTypeSafe)) {
@@ -193,7 +194,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		}
 		account = latest
 		accountRelease = wrapReleaseOnDone(c.Request.Context(), accountRelease)
-		setOpsSelectedAccount(c, account.ID, account.Platform)
+		setSelectedAccountContexts(c, account)
 		service.SetOpsUpstreamModel(c, model)
 
 		forwardStart := time.Now()
@@ -201,9 +202,19 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		if accountRelease != nil {
 			accountRelease()
 		}
-		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, time.Since(forwardStart).Milliseconds())
+		forwardDurationMs := time.Since(forwardStart).Milliseconds()
+		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, forwardDurationMs)
 
 		if forwardErr != nil {
+			attemptStatus := c.Writer.Status()
+			if attemptStatus < http.StatusBadRequest {
+				attemptStatus = 0
+			}
+			var auditUpstreamErr *service.SystemOneUpstreamError
+			if errors.As(forwardErr, &auditUpstreamErr) {
+				attemptStatus = auditUpstreamErr.StatusCode
+			}
+			markGatewayAuditAttemptResult(c, attemptStatus, forwardDurationMs, forwardErr)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(forwardErr, &failoverErr) {
 				switch fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr) {
@@ -244,6 +255,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		}
 
 		c.Data(result.StatusCode, result.ContentType, result.Body)
+		markGatewayAuditAttemptResult(c, result.StatusCode, forwardDurationMs, nil)
 		h.recordSystemOneUsage(c, apiKey, account, subscription, channelMapping, model, body, result, subject.UserID, pricingAt)
 		return
 	}
@@ -258,9 +270,13 @@ func (h *GatewayHandler) recordSystemOneUsage(c *gin.Context, apiKey *service.AP
 	sessionID := service.ExtractClientSessionID(c)
 	requestPayloadHash := service.HashUsageRequestPayload(body)
 
+	// An interior pointer into SystemOneForwardResult would also retain its
+	// response body while usage waits in the queue. Copy only billing metadata.
+	forwardResult := result.ForwardResult
+	channelUsageFields := clientRequestedUsageFields(c, mapping, model, result.UpstreamModel)
 	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-			Result:             &result.ForwardResult,
+			Result:             &forwardResult,
 			APIKey:             apiKey,
 			User:               apiKey.User,
 			Account:            account,
@@ -274,7 +290,7 @@ func (h *GatewayHandler) recordSystemOneUsage(c *gin.Context, apiKey *service.AP
 			RequestPayloadHash: requestPayloadHash,
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
-			ChannelUsageFields: clientRequestedUsageFields(c, mapping, model, result.UpstreamModel),
+			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.gateway.systemone"),

@@ -1,11 +1,15 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/audit"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -106,4 +110,48 @@ func TestTypeSafeGroupsRejectNonSystemOneProtocolsBeforeScheduling(t *testing.T)
 			require.Contains(t, recorder.Body.String(), systemOneOnlyPlatformMessage)
 		})
 	}
+}
+
+func TestSystemOneGatewayAuditCapturesConsumedInputBeforeRejection(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.GatewayAuditConfig{
+		Enabled: true, InputCaptureMode: "full", OutputCaptureMode: "preview",
+		FileEnabled: true, FilePath: filepath.Join(dir, "audit.jsonl"), SampleRate: 1,
+		IncludePaths:      []string{EndpointSystemOne},
+		MaxInputBodyBytes: 4096, MaxOutputBodyBytes: 4096, MaxStringValueBytes: 1024,
+		MaxArrayItems: 10, MaxObjectDepth: 10,
+	}
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		template, _ := newTypeSafeGroupContext(t, EndpointSystemOne, validSystemOneHandlerBody, service.PlatformOpenAI)
+		key, _ := middleware2.GetAPIKeyFromContext(template)
+		subject, _ := middleware2.GetAuthSubjectFromContext(template)
+		c.Set(string(middleware2.ContextKeyAPIKey), key)
+		c.Set(string(middleware2.ContextKeyUser), subject)
+		c.Next()
+	})
+	router.Use(audit.GatewayAuditMiddleware(cfg))
+	h := &GatewayHandler{cfg: &config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1 << 20}}}
+	router.POST(EndpointSystemOne, h.SystemOne)
+	request := httptest.NewRequest(http.MethodPost, EndpointSystemOne, strings.NewReader(validSystemOneHandlerBody))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+	require.Contains(t, recorder.Body.String(), "only available for TypeSafe")
+	files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	data, err := os.ReadFile(files[0])
+	require.NoError(t, err)
+	var event audit.Event
+	require.NoError(t, json.Unmarshal(data, &event))
+	require.Equal(t, EndpointSystemOne, event.Path)
+	require.Equal(t, "jev-latest", event.Model)
+	require.Equal(t, http.StatusNotFound, event.StatusCode)
+	require.NotNil(t, event.Input)
+	require.Equal(t, int64(len(validSystemOneHandlerBody)), event.Input.SizeBytes)
+	body, err := json.Marshal(event.Input.Body)
+	require.NoError(t, err)
+	require.JSONEq(t, validSystemOneHandlerBody, string(body))
 }

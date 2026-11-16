@@ -53,7 +53,7 @@ npm install -g pnpm
 
 ### CI 要求
 
-- Go 版本必须是 **1.27.0**：三个 workflow 都用 `go-version-file: backend/go.mod` 取版本，随后硬断言 `go version | grep -q 'go1.27.0'`。升级 Go 时要同时改 `backend/go.mod`、`backend-ci.yml`（两处）、`release.yml`、`security-scan.yml` 里的这句断言，**以及三个 Dockerfile 里的 Go 构建镜像**（`Dockerfile` / `deploy/Dockerfile` 的 `ARG GOLANG_IMAGE`、`backend/Dockerfile` 的 `FROM golang:`）。前者漏了 CI 会在版本校验步骤直接失败；**后者漏了 CI 不会报，而是等到有人用这些 Dockerfile 构建时才失败**（`go.mod requires go >= X (running Y; GOTOOLCHAIN=local)`）。
+- Go 版本必须是 **1.27.4**：三个 workflow 都用 `go-version-file: backend/go.mod` 取版本，随后硬断言 `go version | grep -q 'go1.27.4'`。升级 Go 时要同时改 `backend/go.mod`、`backend-ci.yml`（两处）、`release.yml`、`security-scan.yml` 里的这句断言，**以及三个 Dockerfile 里的 Go 构建镜像**（`Dockerfile` / `deploy/Dockerfile` 的 `ARG GOLANG_IMAGE`、`backend/Dockerfile` 的 `FROM golang:`）。前者漏了 CI 会在版本校验步骤直接失败；**后者漏了 CI 不会报，而是等到有人用这些 Dockerfile 构建时才失败**（`go.mod requires go >= X (running Y; GOTOOLCHAIN=local)`）。
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 
 ### 本地测试命令
@@ -314,7 +314,7 @@ UsageView + AuditDetailDrawer 展示
 - 非法或空 capture mode 必须归一化到 `preview`。
 - `full` 输入硬上限为 1 MiB，输出硬上限为 2 MiB；修改限制时必须继续调用 `normalizeGatewayAuditBodyLimit`。
 
-特别注意：middleware 可以包装响应 writer，但请求 body 往往已被 handler 消费，因此每条新网关处理链必须在解析原始 body 后调用 `captureGatewayInput` 或 `captureGatewayInputHash`。新增协议/别名路由时只挂 middleware 不等于输入审计已经完整。
+特别注意：middleware 可以包装响应 writer，但请求 body 往往已被 handler 消费，因此每条新网关处理链必须在解析原始 body 后调用 `captureGatewayInput` 或 `captureGatewayInputHash`。新增协议/别名路由时只挂 middleware 不等于输入审计已经完整。 TypeSafe `/v1/systemone` 由 `gateway_systemone.go` 显式采集输入、账号和转发结果；该路径已加入配置及前端默认 include paths。已有自定义 include paths 仍按管理员保存值生效，需要采集此入口时应显式加入。
 
 #### 4. 实时生效与重启边界
 
