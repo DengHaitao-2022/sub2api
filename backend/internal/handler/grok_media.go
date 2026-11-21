@@ -405,6 +405,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			var validationErr *service.GrokMediaInputValidationError
+			if errors.As(err, &validationErr) {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", validationErr.Error())
+				markGatewayAuditAttemptResult(c, http.StatusBadRequest, forwardDurationMs, err)
+				return
+			}
 			attemptStatus := c.Writer.Status()
 			if attemptStatus < http.StatusBadRequest {
 				attemptStatus = 0
